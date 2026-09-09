@@ -301,8 +301,8 @@ window.BIKES = [
       ],
       "brakes" : "v-brake",
       "notes" : {
-         "en" : "Pair of Dahon Vitesse (ad: Vietsse), 3-speed hub, 12.5 kg, 20 inch, 77×64×30 cm folded. Pair €400 firm. Singles €250. Pickup Delft.",
-         "nl" : "Paar Dahon Vitesse (ad: Vietsse), 3 naafversnellingen, 12,5 kg, 20 inch, 77×64×30 cm ingeklapt. Paarprijs €400 vast. Los €250. Ophalen Delft."
+         "en" : "Pair of Dahon Vitesse, 3-speed hub, 12.5 kg, 20 inch, 77×64×30 cm folded. Pair €400. Singles €250. Pickup Delft.",
+         "nl" : "Paar Dahon Vitesse, 3 naafversnellingen, 12,5 kg, 20 inch, 77×64×30 cm ingeklapt. Paarprijs €400. Los €250. Ophalen Delft."
       },
       "mpId" : "m2428188406",
       "brand" : "Dahon",

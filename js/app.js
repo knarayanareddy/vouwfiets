@@ -4,6 +4,10 @@
   const euro = (n) => "€\u00a0" + Number(n).toLocaleString("nl-NL");
   const t = () => window.I18N[state.lang];
 
+  let lastDeckWheel = 0;
+  let deckSwiping = false;
+  let lastActiveTrigger = null;
+
   const state = {
     lang: localStorage.getItem("vouw-lang") || "nl",
     bikes: [],
@@ -49,76 +53,76 @@
       if (cfg.provider === "firebase") {
         return ref ? `${base}/${encodeURIComponent(ref)}.json` : `${base}.json`;
       }
-      return ref ? `${base}/${encodeURIComponent(ref)}` : base;
+      return `${base}?ref=${encodeURIComponent(ref || "")}`;
     },
     async fetchRemote() {
       const url = this.getEndpoint();
-      if (!url) return null;
+      if (!url) return;
       try {
-        const res = await fetch(url, { headers: { "Accept": "application/json" } });
-        if (!res.ok) return null;
-        const remoteData = await res.json();
-        if (!remoteData || typeof remoteData !== "object") return null;
-        const local = this.load();
-        let changed = false;
-        Object.keys(remoteData).forEach((ref) => {
-          const r = remoteData[ref];
-          if (!r || typeof r !== "object") return;
-          const l = local[ref] || { currentBid: 0, bidCount: 0, history: [] };
-          if ((r.currentBid || 0) > (l.currentBid || 0) || (r.bidCount || 0) > (l.bidCount || 0)) {
-            local[ref] = {
-              currentBid: Math.max(r.currentBid || 0, l.currentBid || 0),
-              bidCount: Math.max(r.bidCount || 0, l.bidCount || 0),
-              history: r.history && r.history.length ? r.history : (l.history || [])
-            };
-            changed = true;
-          }
-        });
-        if (changed) {
-          this.save(local);
-          this.merge(state.bikes, local);
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data || typeof data !== "object") return;
+        this.merge(state.bikes, data);
+        const activeInput = document.activeElement;
+        const isBiddingForm = activeInput && activeInput.closest && activeInput.closest("#bid-form");
+        if (!isBiddingForm) {
           render();
         }
-        return remoteData;
-      } catch (err) {
-        return null;
+      } catch (e) {
+        console.warn("Vouwloods bid fetch failed, using local storage:", e.message);
+      }
+    },
+    async pushRemote(ref, bidRecord) {
+      const url = this.getEndpoint(ref);
+      if (!url) return;
+      try {
+        const cfg = window.VOUW.bidSync;
+        const method = cfg.provider === "firebase" ? "PATCH" : "POST";
+        const body = JSON.stringify({
+          currentBid: bidRecord.currentBid,
+          bidCount: bidRecord.bidCount,
+          history: bidRecord.history,
+          updatedAt: Date.now(),
+        });
+        await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+      } catch (e) {
+        console.warn("Vouwloods remote bid push failed:", e.message);
       }
     },
     add(ref, amount, name) {
-      const stored = this.load();
-      const cur = stored[ref] || { currentBid: 0, bidCount: 0, history: [] };
-      cur.currentBid = amount;
+      const data = this.load();
+      const cur = data[ref] || { currentBid: 0, bidCount: 0, history: [] };
+      cur.currentBid = Math.max(cur.currentBid, amount);
       cur.bidCount = (cur.bidCount || 0) + 1;
-      cur.history = [{ amount, name: name || "anon", at: Date.now() }, ...(cur.history || [])].slice(0, 8);
-      stored[ref] = cur;
-      this.save(stored);
-
-      const url = this.getEndpoint(ref);
-      if (url) {
-        const method = (window.VOUW && window.VOUW.bidSync && window.VOUW.bidSync.provider === "firebase") ? "PUT" : "POST";
-        fetch(url, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(cur)
-        }).catch((err) => console.warn("Vouwloods bid sync error:", err));
-      }
+      cur.history = cur.history || [];
+      cur.history.unshift({ amount, name: name || (state.lang === "nl" ? "Anoniem" : "Anonymous"), time: Date.now() });
+      if (cur.history.length > 20) cur.history.pop();
+      data[ref] = cur;
+      this.save(data);
+      this.pushRemote(ref, cur);
       return cur;
     },
   };
 
   function waLink(bike, extra = "") {
     const num = (window.VOUW.whatsapp || "").replace(/[^\d]/g, "");
-    const L = t();
     const pairNote = (bike.qty || 1) > 1 ? (state.lang === "nl" ? ", 2 stuks" : ", pair") : "";
-    const defAsk = state.lang === "nl"
-      ? "Is deze nog beschikbaar en kan ik langskomen voor een proefrit in Delft?"
-      : "Is this still available and can I arrange a test ride in Delft?";
-    const tail = extra ? extra : defAsk;
-    const msg =
-      state.lang === "nl"
-        ? `Hallo, ik heb interesse in de ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods. Vraagprijs ${euro(bike.price)}. ${tail}`.trim()
-        : `Hello, I'm interested in the ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods. Asking ${euro(bike.price)}. ${tail}`.trim();
-    return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+    let msg = "";
+    if (extra) {
+      msg = state.lang === "nl"
+        ? `Hoi, ik heb interesse in de ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods. ${extra} Wanneer kan ik eventueel langskomen voor een bezichtiging en proefrit in Delft?`
+        : `Hi, I'm interested in the ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods. ${extra} Can I arrange a viewing and test ride in Delft?`;
+    } else {
+      msg = state.lang === "nl"
+        ? `Hoi, ik heb interesse in de ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods (vraagprijs ${euro(bike.price)}). Is deze nog beschikbaar en kan ik langskomen voor een proefrit in Delft?`
+        : `Hi, I'm interested in the ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods (asking ${euro(bike.price)}). Is this still available and can I arrange a test ride in Delft?`;
+    }
+    return `https://wa.me/${num}?text=${encodeURIComponent(msg.trim())}`;
   }
 
   function formatPhone(num) {
@@ -150,8 +154,8 @@
   function mpText(bike) {
     const yr = bike.year ? ` (${bike.year})` : "";
     return state.lang === "nl"
-      ? `Hallo, ik reageer op Vouwloods ref ${bike.ref} — ${bike.brand} ${bike.model}${yr}. Ik wil hem graag bekijken in Delft.`
-      : `Hello, contacting about Vouwloods ref ${bike.ref} — ${bike.brand} ${bike.model}${yr}. I'd like to view it in Delft.`;
+      ? `Hoi, ik reageer op Vouwloods ref ${bike.ref} (${bike.brand} ${bike.model}${yr}). Ik wil hem graag komen bekijken en proefrijden in Delft.`
+      : `Hi, I'm reaching out regarding Vouwloods ref ${bike.ref} (${bike.brand} ${bike.model}${yr}). I would like to arrange a viewing and test ride in Delft.`;
   }
 
   function listingText(bike) {
@@ -160,14 +164,17 @@
     const siteUrl = (location.origin && location.origin !== "null" && location.protocol.startsWith("http"))
       ? `${location.origin}${location.pathname.replace(/\/+$/, "")}/#/bike/${bike.ref}`
       : `https://knarayanareddy.github.io/vouwfiets/#/bike/${bike.ref}`;
+    const trAcc = window.I18N.accessories || {};
+    const inc = (bike.included || []).map((i) => trAcc[i]?.[state.lang] || i).join(", ") || "—";
     if (state.lang === "nl") {
-      return `${bike.brand} ${bike.model} vouwfiets (${bike.year || "ZGAN"}) — ${bike.color.nl}\nRef: ${bike.ref}\nVraagprijs: ${euro(bike.price)} | bieden vanaf ${euro(bike.minBid)}\nStaat: ${L.cond[bike.condition]}\n${bike.gears} versnellingen · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · elektrisch" : ""}\n\n${bike.notes.nl}\n\nGebreken: ${bike.defects.nl}\nInbegrepen: ${bike.included.join(", ") || "—"}\nOphalen in ${loc}. Bekijk alle foto's & voorraad: ${siteUrl}`;
+      return `⭐ ${bike.brand} ${bike.model} vouwfiets (${bike.year ? `bouwjaar ${bike.year}` : "ZGAN"}) — ${bike.color.nl}\nRef: ${bike.ref}\nVraagprijs: ${euro(bike.price)} | bieden vanaf ${euro(bike.minBid)}\nStaat: ${L.cond[bike.condition]}\n${bike.gears} versnellingen · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · elektrisch" : ""}\n\n100% SPITSVRIJ IN DE TREIN:\nDeze vouwfiets reist volgens officiële NS-voorwaarden gratis mee als handbagage, ook tijdens de ochtend- en avondspits!\n\n${bike.notes.nl}\n\nGebreken: ${bike.defects.nl}\nInbegrepen: ${inc}\n\n✅ StopHeling gecheckt (100% eerlijke herkomst)\n✅ Vrijblijvende proefrit in Delft (7 dagen op afspraak)\n✅ Betaling bij afhalen via Tikkie of contant\n\nBekijk alle foto's & de complete voorraad:\n${siteUrl}`;
     }
-    return `${bike.brand} ${bike.model} folding bike (${bike.year || "like new"}) — ${bike.color.en}\nRef: ${bike.ref}\nAsking: ${euro(bike.price)} | bids from ${euro(bike.minBid)}\nCondition: ${L.cond[bike.condition]}\n${bike.gears} gears · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · electric" : ""}\n\n${bike.notes.en}\n\nDefects: ${bike.defects.en}\nIncluded: ${bike.included.join(", ") || "—"}\nPickup in ${loc}. View all photos & stock: ${siteUrl}`;
+    return `⭐ ${bike.brand} ${bike.model} folding bike (${bike.year ? `year ${bike.year}` : "like new"}) — ${bike.color.en}\nRef: ${bike.ref}\nAsking: ${euro(bike.price)} | bids from ${euro(bike.minBid)}\nCondition: ${L.cond[bike.condition]}\n${bike.gears} gears · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · electric" : ""}\n\n100% FREE ON NS TRAINS:\nTravels 100% free as hand luggage on Dutch trains, even during peak rush hours!\n\n${bike.notes.en}\n\nDefects: ${bike.defects.en}\nIncluded: ${inc}\n\n✅ Checked in StopHeling theft registry\n✅ Test ride in Delft by appointment (7 days)\n✅ Payment upon pickup via Tikkie, cash or Revolut\n\nView all photos & full warehouse stock:\n${siteUrl}`;
   }
 
   function toast(msg) {
     const el = $("#toast");
+    if (!el) return;
     el.textContent = msg;
     el.classList.add("show");
     clearTimeout(toast._t);
@@ -183,18 +190,22 @@
     }
     const ta = document.createElement("textarea");
     ta.value = text;
+    ta.setAttribute("readonly", "");
     ta.style.position = "fixed";
-    ta.style.opacity = "0";
+    ta.style.top = "-9999px";
+    ta.style.left = "-9999px";
+    ta.style.fontSize = "16px";
     document.body.appendChild(ta);
     ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    let ok = false;
     try {
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      return true;
-    } catch (e) {
-      document.body.removeChild(ta);
-      return false;
+      ok = document.execCommand("copy");
+    } catch (_) {
+      ok = false;
     }
+    document.body.removeChild(ta);
+    return ok;
   }
 
   function parseRoute() {
@@ -257,10 +268,18 @@
   function render() {
     const apply = () => {
       parseRoute();
+      if (typeof window.scrollTo === "function") {
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      }
       document.documentElement.lang = state.lang;
       renderChrome();
       if (state.route === "bike") renderProduct();
-      else renderHome();
+      else {
+        renderHome();
+        if (state.route === "how") {
+          setTimeout(() => $("#how")?.scrollIntoView({ behavior: "smooth" }), 60);
+        }
+      }
       renderCompare();
     };
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -376,30 +395,30 @@
     $("#inv-title").textContent = L.navInventory;
     const conds = ["like-new", "excellent", "good", "fair", "project"];
     $("#filters").innerHTML = `
-      <input id="f-q" value="${escapeAttr(state.q)}" placeholder="${L.searchPh}">
-      <select id="f-brand">
+      <input id="f-q" value="${escapeAttr(state.q)}" placeholder="${L.searchPh}" aria-label="${L.searchPh}">
+      <select id="f-brand" aria-label="${L.allBrands}">
         <option value="">${L.allBrands}</option>
         ${brands().map((b) => `<option ${b === state.brand ? "selected" : ""}>${b}</option>`).join("")}
       </select>
-      <select id="f-cond">
+      <select id="f-cond" aria-label="${L.allCond}">
         <option value="">${L.allCond}</option>
         ${conds.map((c) => `<option value="${c}" ${c === state.cond ? "selected" : ""}>${L.cond[c]}</option>`).join("")}
       </select>
-      <select id="f-power">
+      <select id="f-power" aria-label="${L.allPower}">
         <option value="">${L.allPower}</option>
         <option value="e" ${state.power === "e" ? "selected" : ""}>${L.onlyE}</option>
         <option value="pedal" ${state.power === "pedal" ? "selected" : ""}>${L.onlyPedal}</option>
       </select>
-      <select id="f-sort">
+      <select id="f-sort" aria-label="${L.sortLabel || "Sorteren"}">
         <option value="feat" ${state.sort === "feat" ? "selected" : ""}>${L.sortFeat}</option>
         <option value="price-asc" ${state.sort === "price-asc" ? "selected" : ""}>${L.sortPriceAsc}</option>
         <option value="price-desc" ${state.sort === "price-desc" ? "selected" : ""}>${L.sortPriceDesc}</option>
         <option value="bids" ${state.sort === "bids" ? "selected" : ""}>${L.sortBids}</option>
         <option value="year" ${state.sort === "year" ? "selected" : ""}>${L.sortYear}</option>
       </select>
-      <div class="view-toggle">
-        <button data-view="grid" class="${state.view === "grid" ? "on" : ""}">${L.viewGrid}</button>
-        <button data-view="deck" class="${state.view === "deck" ? "on" : ""}">${L.viewDeck}</button>
+      <div class="view-toggle" role="group" aria-label="Weergave modus">
+        <button data-view="grid" class="${state.view === "grid" ? "on" : ""}" aria-pressed="${state.view === "grid"}">${L.viewGrid}</button>
+        <button data-view="deck" class="${state.view === "deck" ? "on" : ""}" aria-pressed="${state.view === "deck"}">${L.viewDeck}</button>
       </div>`;
   }
 
@@ -432,7 +451,7 @@
         </div>
         <div class="card-actions">
           <button class="btn btn-brass" data-open="${b.ref}">${L.view}</button>
-          <button class="btn btn-ghost" data-compare="${b.ref}">${inC ? L.compared : L.compare}</button>
+          <button class="btn btn-ghost" data-compare="${b.ref}" aria-pressed="${inC}">${inC ? L.compared : L.compare}</button>
         </div>
       </div>
     </article>`;
@@ -460,7 +479,7 @@
         .map((b, i) => {
           const off = i - state.deckIndex;
           if (Math.abs(off) > 4) {
-            return `<div class="deck-item" data-deck-index="${i}" style="display:none">${cardHTML(b)}</div>`;
+            return `<div class="deck-item" data-deck-index="${i}" aria-hidden="true" inert style="display:none">${cardHTML(b)}</div>`;
           }
           const x = off * stepX;
           const z = -Math.abs(off) * 90;
@@ -468,31 +487,34 @@
           const scale = off === 0 ? 1 : Math.max(0.74, 1 - Math.abs(off) * 0.07);
           const opacity = off === 0 ? 1 : Math.max(0.2, 1 - Math.abs(off) * 0.2);
           const isCenter = off === 0;
-          return `<div class="deck-item ${isCenter ? "active" : "side"}" data-deck-index="${i}" style="transform: translateX(${x}px) translateZ(${z}px) rotateY(${rotY}deg) scale(${scale}); z-index:${30 - Math.abs(off)}; opacity:${opacity};">${cardHTML(b)}</div>`;
+          return `<div class="deck-item ${isCenter ? "active" : "side"}" data-deck-index="${i}" ${isCenter ? 'aria-hidden="false"' : 'aria-hidden="true" inert'} style="transform: translateX(${x}px) translateZ(${z}px) rotateY(${rotY}deg) scale(${scale}); z-index:${30 - Math.abs(off)}; opacity:${opacity};">${cardHTML(b)}</div>`;
         })
         .join("");
 
+      const isSingle = total <= 1;
       root.innerHTML = `
         <div class="deck" id="deck-track" tabindex="0" aria-label="3D Deck Showroom">
           ${cardsHtml}
         </div>
         <div class="deck-toolbar">
-          <button class="btn btn-ghost deck-nav" id="deck-prev" aria-label="${L.prev || "Vorige"}">‹ ${L.prev || "Vorige"}</button>
+          <button class="btn btn-ghost deck-nav" id="deck-prev" aria-label="${L.prev || "Vorige"}" ${isSingle ? "disabled" : ""}>‹ ${L.prev || "Vorige"}</button>
           <div class="deck-status" id="deck-status">
             <strong>${cur.brand} ${cur.model}</strong>
             <span>${state.deckIndex + 1} / ${total} · ${cur.ref}</span>
           </div>
-          <button class="btn btn-ghost deck-next" id="deck-next" aria-label="${L.next || "Volgende"}">${L.next || "Volgende"} ›</button>
+          <button class="btn btn-ghost deck-next" id="deck-next" aria-label="${L.next || "Volgende"}" ${isSingle ? "disabled" : ""}>${L.next || "Volgende"} ›</button>
         </div>
-        <p class="deck-tip">${L.deckHint || "Klik op een kaart om te centreren · Gebruik ‹ › of pijltjestoetsen"}</p>`;
+        <p class="deck-tip">${L.deckHint || "Klik op een fiets om te bekijken · Blader met ‹ ›, muiswiel of pijltjestoetsen"}</p>`;
 
       $("#deck-prev").onclick = (e) => {
         e.stopPropagation();
+        if (total <= 1) return;
         state.deckIndex = (state.deckIndex - 1 + total) % total;
         renderGrid();
       };
       $("#deck-next").onclick = (e) => {
         e.stopPropagation();
+        if (total <= 1) return;
         state.deckIndex = (state.deckIndex + 1) % total;
         renderGrid();
       };
@@ -510,19 +532,28 @@
     if (!track || track._gesturesBound) return;
     track._gesturesBound = true;
     let startX = 0;
+    let startY = 0;
     let isTracking = false;
 
     track.addEventListener("pointerdown", (e) => {
       startX = e.clientX;
+      startY = e.clientY;
       isTracking = true;
+      deckSwiping = false;
+      try { track.setPointerCapture(e.pointerId); } catch (_) {}
     }, { passive: true });
 
     track.addEventListener("pointerup", (e) => {
       if (!isTracking) return;
       isTracking = false;
+      try { track.releasePointerCapture(e.pointerId); } catch (_) {}
       const dx = e.clientX - startX;
-      if (Math.abs(dx) > 35) {
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        deckSwiping = true;
+        setTimeout(() => { deckSwiping = false; }, 120);
         const list = filtered();
+        if (list.length <= 1) return;
         if (dx < 0) {
           state.deckIndex = (state.deckIndex + 1) % list.length;
         } else {
@@ -532,16 +563,20 @@
       }
     }, { passive: true });
 
-    track.addEventListener("pointercancel", () => { isTracking = false; }, { passive: true });
+    track.addEventListener("pointercancel", (e) => {
+      isTracking = false;
+      try { track.releasePointerCapture(e.pointerId); } catch (_) {}
+    }, { passive: true });
 
     track.addEventListener("wheel", (e) => {
       const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       if (Math.abs(delta) > 20) {
         e.preventDefault();
         const now = Date.now();
-        if (now - (track._lastWheel || 0) > 220) {
-          track._lastWheel = now;
+        if (now - lastDeckWheel > 240) {
+          lastDeckWheel = now;
           const list = filtered();
+          if (list.length <= 1) return;
           if (delta > 0) state.deckIndex = (state.deckIndex + 1) % list.length;
           else state.deckIndex = (state.deckIndex - 1 + list.length) % list.length;
           renderGrid();
@@ -592,8 +627,13 @@
     const hist = (bike.localHistory || [])
       .map((h) => `<li>${euro(h.amount)} — ${escapeHtml(h.name)}</li>`)
       .join("");
-    const mpHref = bike.mpUrl || window.VOUW.marktplaatsProfile;
+    const rawMpHref = bike.mpUrl || window.VOUW.marktplaatsProfile || "";
+    const mpHref = /^https?:\/\//i.test(rawMpHref) ? rawMpHref : "#";
     const qty = bike.qty || 1;
+    const regionText = typeof window.VOUW.region === "object" ? (window.VOUW.region[state.lang] || window.VOUW.region.nl) : window.VOUW.region;
+    const paymentText = typeof window.VOUW.payment === "object" ? (window.VOUW.payment[state.lang] || window.VOUW.payment.nl) : window.VOUW.payment;
+    const pickupHoursText = typeof window.VOUW.pickupHours === "object" ? (window.VOUW.pickupHours[state.lang] || window.VOUW.pickupHours.nl) : window.VOUW.pickupHours;
+
     const pairHtml = qty > 1
       ? `<div class="note"><strong>${L.pair}</strong><p>${
           state.lang === "nl"
@@ -601,6 +641,14 @@
             : `This listing is <strong>two bikes</strong>. Asking ${euro(bike.price)} for the pair.${bike.unitPrice ? ` Singles also possible at ${euro(bike.unitPrice)} each.` : ""}`
         }</p></div>`
       : "";
+
+    const trustStripHtml = `
+      <div class="product-trust-strip">
+        <div class="product-trust-item"><span class="pt-icon">🛡️</span><div><strong>${state.lang === "nl" ? "StopHeling gecheckt" : "StopHeling verified"}</strong><small>${state.lang === "nl" ? "100% eerlijke herkomst" : "Legitimate origin verified"}</small></div></div>
+        <div class="product-trust-item"><span class="pt-icon">🚆</span><div><strong>${state.lang === "nl" ? "100% gratis in NS-trein" : "Free on NS trains"}</strong><small>${state.lang === "nl" ? "Handbagage, ook in de spits" : "Hand luggage, peak hours OK"}</small></div></div>
+        <div class="product-trust-item"><span class="pt-icon">🚲</span><div><strong>${state.lang === "nl" ? "Proefrit in Delft" : "Test ride in Delft"}</strong><small>${state.lang === "nl" ? "Vrijblijvend proberen" : "Try before you buy"}</small></div></div>
+        <div class="product-trust-item"><span class="pt-icon">💶</span><div><strong>${state.lang === "nl" ? "Tikkie of contant" : "Tikkie, cash or Revolut"}</strong><small>${state.lang === "nl" ? "Betaling pas bij afhalen" : "Payment upon inspection"}</small></div></div>
+      </div>`;
 
     const trSpecs = window.I18N.specsTranslate || {};
     const trAcc = window.I18N.accessories || {};
@@ -639,6 +687,7 @@
             <tr><th>${L.tires}</th><td>${(trSpecs[bike.tires] && trSpecs[bike.tires][state.lang]) || bike.tires}</td></tr>
             <tr><th>${L.included}</th><td>${bike.included.map((item) => (trAcc[item] && trAcc[item][state.lang]) || item).join(", ") || "—"}</td></tr>
           </table>
+          ${trustStripHtml}
         </div>
         <aside class="buybox">
           <div class="refcode">${bike.ref} · ${L.status[bike.status]}</div>
@@ -649,25 +698,30 @@
           </div>
           <div class="ask">${euro(bike.price)} <small>${L.asking}</small>${qty > 1 && bike.unitPrice ? `<span style="display:block;font-size:0.5em;font-weight:400;color:var(--muted);margin-top:2px">${euro(bike.unitPrice)} ${L.each}</span>` : ""}</div>
           ${pairHtml}
+          ${qty > 1 ? `<div style="font-size:12px;color:var(--brass);background:rgba(215,168,92,0.1);padding:8px 12px;border-radius:10px;margin-bottom:10px;border:1px solid rgba(215,168,92,0.25)">💡 ${L.singleBikeNote}</div>` : ""}
           <p class="lead-s" style="margin:8px 0 0">${highest ? `${L.highest}: ${euro(highest)} · ${bike.bidCount} ${L.bids}` : L.noBids} · ${L.minBid} ${euro(minNext)}</p>
           <p class="lead-s">${L.bidLead}</p>
           <form class="bid-form" id="bid-form">
-            <input type="number" name="amount" min="${minNext}" step="1" max="50000" placeholder="${L.yourBid}" required>
-            <input type="text" name="name" placeholder="${L.yourName}" maxlength="40">
+            <input type="number" name="amount" min="${minNext}" step="1" max="50000" placeholder="${L.yourBid}" aria-label="${L.yourBid}" required>
+            <input type="text" name="name" placeholder="${L.yourName}" aria-label="${L.yourName}" maxlength="40">
             <button class="btn btn-signal" type="submit">${L.placeBid}</button>
           </form>
           ${hist ? `<div class="note"><strong>${L.bidHistory}</strong><ul>${hist}</ul></div>` : ""}
           <h3 style="margin:16px 0 8px">${L.contactTitle}</h3>
           <div class="contact-row">
-            <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(bike)}">${L.waBtn}</a>
-            <a class="btn btn-ghost" href="${emailLink(bike)}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>${L.emailBtn}</a>
-            <a class="btn btn-ghost" target="_blank" rel="noopener" href="${mpHref}">${L.mpBtn}</a>
-            <button class="btn btn-ghost" id="copy-msg">${L.copyMsg}</button>
-            <button class="btn btn-ghost" id="copy-listing">${L.copyListing}</button>
-            <button class="btn btn-ghost" id="share">${L.share}</button>
+            <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(bike)}" style="font-size:14px;padding:12px 18px;justify-content:center">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-3px;margin-right:4px"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+              ${state.lang === "nl" ? "Koop of plan proefrit via WhatsApp" : "Buy or book test ride on WhatsApp"}
+            </a>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a class="btn btn-ghost" href="${emailLink(bike)}" style="flex:1;justify-content:center"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>${L.emailBtn}</a>
+              <a class="btn btn-ghost" target="_blank" rel="noopener" href="${mpHref}" style="flex:1;justify-content:center">${L.mpBtn}</a>
+              <button class="btn btn-ghost" id="share" style="padding:10px 14px" aria-label="${L.share}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+            </div>
+            ${location.search.includes("admin") ? `<button class="btn btn-ghost" id="copy-listing">${L.copyListing}</button>` : ""}
           </div>
-          <p class="lead-s" style="margin-top:14px;line-height:1.75"><strong>${L.pickup}:</strong> ${window.VOUW.city}, ${window.VOUW.region} · ${window.VOUW.pickupHours[state.lang]}<br>
-          <strong>${L.pay}:</strong> ${window.VOUW.payment[state.lang]}${window.VOUW.whatsapp ? `<br><strong>WhatsApp:</strong> <a target="_blank" rel="noopener" href="${waLink(bike)}" style="color:#25d366;font-weight:600;text-decoration:underline">${formatPhone(window.VOUW.whatsapp)}</a>` : ""}${window.VOUW.email ? `<br><strong>${L.email}:</strong> <a href="${emailLink(bike)}" style="color:var(--signal);text-decoration:underline">${window.VOUW.email}</a>` : ""}</p>
+          <p class="lead-s" style="margin-top:14px;line-height:1.75"><strong>${L.pickup}:</strong> ${window.VOUW.city}, ${regionText} · ${pickupHoursText}<br>
+          <strong>${L.pay}:</strong> ${paymentText}${window.VOUW.whatsapp ? `<br><strong>WhatsApp:</strong> <a target="_blank" rel="noopener" href="${waLink(bike)}" style="color:#25d366;font-weight:600;text-decoration:underline">${formatPhone(window.VOUW.whatsapp)}</a>` : ""}${window.VOUW.email ? `<br><strong>${L.email}:</strong> <a href="${emailLink(bike)}" style="color:var(--signal);text-decoration:underline">${window.VOUW.email}</a>` : ""}</p>
         </aside>
       </div>`;
 
@@ -772,12 +826,15 @@
     });
   }
 
-  function openCompareModal() {
+  function openCompareModal(triggerEl) {
     const modal = $("#compare-modal");
     if (!modal) return;
+    lastActiveTrigger = triggerEl || document.activeElement;
     renderCompareModalContent();
     modal.hidden = false;
     document.body.style.overflow = "hidden";
+    const closeBtn = $("#cmp-modal-close");
+    if (closeBtn) setTimeout(() => closeBtn.focus(), 50);
   }
 
   function closeCompareModal() {
@@ -785,6 +842,9 @@
     if (!modal || modal.hidden) return;
     modal.hidden = true;
     document.body.style.overflow = "";
+    if (lastActiveTrigger && typeof lastActiveTrigger.focus === "function") {
+      lastActiveTrigger.focus();
+    }
   }
 
   function renderCompareModalContent() {
@@ -809,7 +869,7 @@
         render: (b) => `<strong style="font-size:18px;color:var(--paper)">${euro(b.price)}</strong>${(b.qty || 1) > 1 && b.unitPrice ? `<br><small style="color:var(--muted)">${euro(b.unitPrice)} ${L.each}</small>` : ""}`,
       },
       {
-        label: L.specs,
+        label: L.condition || (state.lang === "nl" ? "Staat" : "Condition"),
         render: (b) => `<span class="pill cond-${b.condition}">${L.cond[b.condition] || b.condition}</span>`,
       },
       {
@@ -833,7 +893,7 @@
         render: (b) => trSpecs[b.folded]?.[state.lang] || b.folded,
       },
       {
-        label: L.electric,
+        label: L.electricLabel || (state.lang === "nl" ? "Elektrische motor" : "Electric motor"),
         render: (b) => b.electric ? `<span class="badge e" style="position:static;display:inline-block">${L.electric}</span>` : (state.lang === "nl" ? "Nee" : "No"),
       },
       {
@@ -845,6 +905,13 @@
         render: (b) => `<small style="color:var(--muted);line-height:1.4;display:block">${escapeHtml(b.defects[state.lang] || "")}</small>`,
       },
     ];
+
+    const cmpRefs = items.map((b) => b.ref).join(" en ");
+    const cmpWaMsg = state.lang === "nl"
+      ? `Hoi, ik twijfel op Vouwloods tussen ${cmpRefs}. Welke raad je aan voor mijn gebruik?`
+      : `Hi, I'm comparing ${cmpRefs} on Vouwloods. Which one would you recommend for my commute?`;
+    const num = (window.VOUW.whatsapp || "").replace(/[^\d]/g, "");
+    const cmpWaUrl = `https://wa.me/${num}?text=${encodeURIComponent(cmpWaMsg)}`;
 
     modal.innerHTML = `
       <div class="compare-modal" role="dialog" aria-modal="true" aria-labelledby="cmp-modal-title">
@@ -873,7 +940,7 @@
                       ${L.view}
                     </a>
                     <div>
-                      <button class="compare-remove-btn" data-cmp-rm="${b.ref}">✕ ${L.compareRemove || (state.lang === "nl" ? "Verwijder" : "Remove")}</button>
+                      <button class="compare-remove-btn" data-cmp-rm="${b.ref}" aria-label="${L.compareRemove || "Verwijderen"}: ${b.brand} ${b.model} (${b.ref})">✕ ${L.compareRemove || (state.lang === "nl" ? "Verwijderen" : "Remove")}</button>
                     </div>
                   </th>
                 `).join("")}
@@ -889,6 +956,16 @@
             </tbody>
           </table>
         </div>
+        <div class="compare-modal-footer">
+          <div class="cmp-advice-text">
+            <strong>${L.compareAdviceTitle || "Twijfel je tussen deze modellen?"}</strong>
+            <span>${L.compareAdviceDesc || "Vraag verkoper Kiran direct om advies over gewicht, vouwsnelheid en dagelijks forenzen."}</span>
+          </div>
+          <a class="btn btn-wa" target="_blank" rel="noopener" href="${cmpWaUrl}">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            ${L.compareAdviceBtn || "Vraag advies via WhatsApp"}
+          </a>
+        </div>
       </div>`;
 
     window._closeCompare = closeCompareModal;
@@ -902,7 +979,7 @@
         const ref = btn.getAttribute("data-cmp-rm");
         const idx = state.compare.indexOf(ref);
         if (idx >= 0) state.compare.splice(idx, 1);
-        renderCompare();
+        if (!state.compare.length) closeCompareModal();
         render();
       };
     });
@@ -942,7 +1019,7 @@
       render();
     };
 
-    const openHandler = () => openCompareModal();
+    const openHandler = (e) => openCompareModal(e ? e.currentTarget : null);
     $("#cmp-open-btn").onclick = openHandler;
     $("#cmp-open-tray").onclick = openHandler;
     $("#cmp-open-text").onclick = openHandler;
@@ -965,15 +1042,24 @@
     });
   }
 
-  function escapeAttr(s) {
-    return String(s).replace(/"/g, "&quot;");
-  }
   function escapeHtml(s) {
-    return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[c]));
   }
+  const escapeAttr = escapeHtml;
 
   /* ---------- events ---------- */
   document.addEventListener("click", (e) => {
+    if (deckSwiping) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const cmp = e.target.closest("[data-compare]");
     if (cmp) {
       e.preventDefault();
