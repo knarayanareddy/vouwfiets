@@ -16,6 +16,7 @@
     sort: "feat",
     view: "grid",
     cfIndex: 0,
+    deckIndex: 0,
     compare: [],
     flipped: false,
   };
@@ -443,27 +444,110 @@
     $("#countline").textContent = `${L.showing} ${list.length} ${L.of} ${state.bikes.length}`;
     const root = $("#grid");
     if (!list.length) {
+      root.className = "grid";
       root.innerHTML = `<div class="empty">${L.empty}</div>`;
       return;
     }
     if (state.view === "deck") {
-      root.className = "deck";
-      const mid = Math.min(list.length, 9);
-      const slice = list.slice(0, mid);
-      root.innerHTML = slice
+      root.className = "deck-wrapper";
+      const total = list.length;
+      state.deckIndex = Math.max(0, Math.min(total - 1, state.deckIndex || 0));
+      const cur = list[state.deckIndex] || list[0];
+      const winW = typeof window !== "undefined" ? window.innerWidth : 1024;
+      const stepX = winW < 600 ? 60 : (winW < 980 ? 110 : 155);
+
+      const cardsHtml = list
         .map((b, i) => {
-          const off = i - Math.floor(slice.length / 2);
-          const rot = off * 8;
-          const x = off * 42;
-          const z = -Math.abs(off) * 30;
-          return `<div class="deck-item" style="transform: translateX(${x}px) translateZ(${z}px) rotateY(${rot}deg); z-index:${20 - Math.abs(off)};">${cardHTML(b)}</div>`;
+          const off = i - state.deckIndex;
+          if (Math.abs(off) > 4) {
+            return `<div class="deck-item" data-deck-index="${i}" style="display:none">${cardHTML(b)}</div>`;
+          }
+          const x = off * stepX;
+          const z = -Math.abs(off) * 90;
+          const rotY = off * -16;
+          const scale = off === 0 ? 1 : Math.max(0.74, 1 - Math.abs(off) * 0.07);
+          const opacity = off === 0 ? 1 : Math.max(0.2, 1 - Math.abs(off) * 0.2);
+          const isCenter = off === 0;
+          return `<div class="deck-item ${isCenter ? "active" : "side"}" data-deck-index="${i}" style="transform: translateX(${x}px) translateZ(${z}px) rotateY(${rotY}deg) scale(${scale}); z-index:${30 - Math.abs(off)}; opacity:${opacity};">${cardHTML(b)}</div>`;
         })
         .join("");
+
+      root.innerHTML = `
+        <div class="deck" id="deck-track" tabindex="0" aria-label="3D Deck Showroom">
+          ${cardsHtml}
+        </div>
+        <div class="deck-toolbar">
+          <button class="btn btn-ghost deck-nav" id="deck-prev" aria-label="${L.prev || "Vorige"}">‹ ${L.prev || "Vorige"}</button>
+          <div class="deck-status" id="deck-status">
+            <strong>${cur.brand} ${cur.model}</strong>
+            <span>${state.deckIndex + 1} / ${total} · ${cur.ref}</span>
+          </div>
+          <button class="btn btn-ghost deck-next" id="deck-next" aria-label="${L.next || "Volgende"}">${L.next || "Volgende"} ›</button>
+        </div>
+        <p class="deck-tip">${L.deckHint || "Klik op een kaart om te centreren · Gebruik ‹ › of pijltjestoetsen"}</p>`;
+
+      $("#deck-prev").onclick = (e) => {
+        e.stopPropagation();
+        state.deckIndex = (state.deckIndex - 1 + total) % total;
+        renderGrid();
+      };
+      $("#deck-next").onclick = (e) => {
+        e.stopPropagation();
+        state.deckIndex = (state.deckIndex + 1) % total;
+        renderGrid();
+      };
+
+      bindDeckGestures();
     } else {
       root.className = "grid";
       root.innerHTML = list.map(cardHTML).join("");
     }
     bindTilt();
+  }
+
+  function bindDeckGestures() {
+    const track = $("#deck-track");
+    if (!track || track._gesturesBound) return;
+    track._gesturesBound = true;
+    let startX = 0;
+    let isTracking = false;
+
+    track.addEventListener("pointerdown", (e) => {
+      startX = e.clientX;
+      isTracking = true;
+    }, { passive: true });
+
+    track.addEventListener("pointerup", (e) => {
+      if (!isTracking) return;
+      isTracking = false;
+      const dx = e.clientX - startX;
+      if (Math.abs(dx) > 35) {
+        const list = filtered();
+        if (dx < 0) {
+          state.deckIndex = (state.deckIndex + 1) % list.length;
+        } else {
+          state.deckIndex = (state.deckIndex - 1 + list.length) % list.length;
+        }
+        renderGrid();
+      }
+    }, { passive: true });
+
+    track.addEventListener("pointercancel", () => { isTracking = false; }, { passive: true });
+
+    track.addEventListener("wheel", (e) => {
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (Math.abs(delta) > 20) {
+        e.preventDefault();
+        const now = Date.now();
+        if (now - (track._lastWheel || 0) > 220) {
+          track._lastWheel = now;
+          const list = filtered();
+          if (delta > 0) state.deckIndex = (state.deckIndex + 1) % list.length;
+          else state.deckIndex = (state.deckIndex - 1 + list.length) % list.length;
+          renderGrid();
+        }
+      }
+    }, { passive: false });
   }
 
   function renderHowFaq() {
@@ -688,6 +772,142 @@
     });
   }
 
+  function openCompareModal() {
+    const modal = $("#compare-modal");
+    if (!modal) return;
+    renderCompareModalContent();
+    modal.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeCompareModal() {
+    const modal = $("#compare-modal");
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  function renderCompareModalContent() {
+    const L = t();
+    const modal = $("#compare-modal");
+    if (!modal) return;
+    const items = state.compare
+      .map((r) => state.bikes.find((b) => b.ref === r))
+      .filter(Boolean);
+
+    if (!items.length) {
+      closeCompareModal();
+      return;
+    }
+
+    const trSpecs = window.I18N.specsTranslate || {};
+    const trAcc = window.I18N.accessories || {};
+
+    const rows = [
+      {
+        label: L.asking,
+        render: (b) => `<strong style="font-size:18px;color:var(--paper)">${euro(b.price)}</strong>${(b.qty || 1) > 1 && b.unitPrice ? `<br><small style="color:var(--muted)">${euro(b.unitPrice)} ${L.each}</small>` : ""}`,
+      },
+      {
+        label: L.specs,
+        render: (b) => `<span class="pill cond-${b.condition}">${L.cond[b.condition] || b.condition}</span>`,
+      },
+      {
+        label: L.gears,
+        render: (b) => `<strong>${b.gears}</strong> ${L.gears}`,
+      },
+      {
+        label: L.brakes,
+        render: (b) => trSpecs[b.brakes]?.[state.lang] || b.brakes,
+      },
+      {
+        label: L.weight,
+        render: (b) => `${b.weightKg} ${L.kg}`,
+      },
+      {
+        label: L.wheel,
+        render: (b) => `${b.wheel}${L.inch}`,
+      },
+      {
+        label: L.folded,
+        render: (b) => trSpecs[b.folded]?.[state.lang] || b.folded,
+      },
+      {
+        label: L.electric,
+        render: (b) => b.electric ? `<span class="badge e" style="position:static;display:inline-block">${L.electric}</span>` : (state.lang === "nl" ? "Nee" : "No"),
+      },
+      {
+        label: L.included,
+        render: (b) => (b.included || []).map((acc) => `<span class="pill" style="display:inline-block;margin:2px 4px 2px 0">${trAcc[acc]?.[state.lang] || acc}</span>`).join(""),
+      },
+      {
+        label: L.defects,
+        render: (b) => `<small style="color:var(--muted);line-height:1.4;display:block">${escapeHtml(b.defects[state.lang] || "")}</small>`,
+      },
+    ];
+
+    modal.innerHTML = `
+      <div class="compare-modal" role="dialog" aria-modal="true" aria-labelledby="cmp-modal-title">
+        <div class="compare-modal-header">
+          <h2 id="cmp-modal-title">${L.compareModalTitle || (state.lang === "nl" ? "Fietsen vergelijken" : "Compare folding bikes")} (${items.length})</h2>
+          <button class="btn btn-ghost" id="cmp-modal-close" style="padding:6px 12px">✕ ${L.compareClose || (state.lang === "nl" ? "Sluiten" : "Close")}</button>
+        </div>
+        <div class="compare-modal-body">
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th class="row-label"></th>
+                ${items.map((b) => `
+                  <th class="compare-col-header" style="width:${Math.floor(100 / items.length)}%">
+                    <a href="#/bike/${b.ref}" class="cmp-card-link" onclick="window._closeCompare && window._closeCompare()">
+                      <img src="${img(b.photos[0])}" alt="${b.brand} ${b.model}">
+                    </a>
+                    <div style="font-size:11px;color:var(--brass);letter-spacing:0.08em;margin-top:4px">${b.ref}</div>
+                    <h3>${b.brand} ${b.model}</h3>
+                    <div class="price" style="margin:4px 0 10px">${euro(b.price)}</div>
+                    <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(b)}" style="margin-bottom:6px;font-size:12px;padding:8px">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                      ${L.waBtn}
+                    </a>
+                    <a class="btn btn-brass" href="#/bike/${b.ref}" onclick="window._closeCompare && window._closeCompare()" style="font-size:12px;padding:6px;margin-bottom:6px">
+                      ${L.view}
+                    </a>
+                    <div>
+                      <button class="compare-remove-btn" data-cmp-rm="${b.ref}">✕ ${L.compareRemove || (state.lang === "nl" ? "Verwijder" : "Remove")}</button>
+                    </div>
+                  </th>
+                `).join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr>
+                  <th class="row-label">${row.label}</th>
+                  ${items.map((b) => `<td>${row.render(b)}</td>`).join("")}
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    window._closeCompare = closeCompareModal;
+    $("#cmp-modal-close").onclick = closeCompareModal;
+    modal.onclick = (e) => {
+      if (e.target === modal) closeCompareModal();
+    };
+    $$("[data-cmp-rm]").forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const ref = btn.getAttribute("data-cmp-rm");
+        const idx = state.compare.indexOf(ref);
+        if (idx >= 0) state.compare.splice(idx, 1);
+        renderCompare();
+        render();
+      };
+    });
+  }
+
   function renderCompare() {
     const L = t();
     const tray = $("#compare-tray");
@@ -695,18 +915,42 @@
     if (!state.compare.length) {
       tray.classList.remove("show");
       tray.innerHTML = "";
+      closeCompareModal();
       return;
     }
     const items = state.compare
       .map((r) => state.bikes.find((b) => b.ref === r))
       .filter(Boolean);
+
     tray.classList.add("show");
     tray.innerHTML = `
-      <strong>${L.compareTitle}</strong>
-      ${items.map((b) => `<img src="${img(b.photos[0])}" alt="${b.ref}"><span>${b.ref}<br>${euro(b.price)}</span>`).join("")}
-      <span class="sp">${items.map((b) => `${b.brand} ${b.model} (${L.cond[b.condition]})`).join(" · ")}</span>
-      <button class="btn btn-ghost" id="cmp-clear">${L.compareClear}</button>`;
-    $("#cmp-clear").onclick = () => { state.compare = []; render(); };
+      <div style="display:flex;align-items:center;gap:8px;cursor:pointer" id="cmp-open-tray" title="${L.compareOpen}">
+        <strong style="color:var(--brass);font-size:13px;letter-spacing:0.04em">${L.compareTitle}:</strong>
+        ${items.map((b) => `<img src="${img(b.photos[0])}" alt="${b.ref}" title="${b.brand} ${b.model}" style="width:48px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--line)">`).join("")}
+      </div>
+      <div class="sp" style="font-size:12px;cursor:pointer" id="cmp-open-text">${items.map((b) => `<strong>${b.ref}</strong> (${euro(b.price)})`).join(" vs ")}</div>
+      <button class="btn btn-brass" id="cmp-open-btn" style="padding:8px 14px;font-size:13px;white-space:nowrap;font-weight:600">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg>
+        ${L.compareOpen || (state.lang === "nl" ? "Vergelijk nu" : "Compare now")} (${items.length})
+      </button>
+      <button class="btn btn-ghost" id="cmp-clear" style="padding:6px 10px;font-size:12px">${L.compareClear}</button>`;
+
+    $("#cmp-clear").onclick = (e) => {
+      e.stopPropagation();
+      state.compare = [];
+      closeCompareModal();
+      render();
+    };
+
+    const openHandler = () => openCompareModal();
+    $("#cmp-open-btn").onclick = openHandler;
+    $("#cmp-open-tray").onclick = openHandler;
+    $("#cmp-open-text").onclick = openHandler;
+
+    const modal = $("#compare-modal");
+    if (modal && !modal.hidden) {
+      renderCompareModalContent();
+    }
   }
 
   function bindTilt() {
@@ -742,6 +986,17 @@
       render();
       return;
     }
+    const deckSide = e.target.closest(".deck-item.side");
+    if (deckSide) {
+      e.preventDefault();
+      e.stopPropagation();
+      const to = Number(deckSide.getAttribute("data-deck-index"));
+      if (!isNaN(to)) {
+        state.deckIndex = to;
+        renderGrid();
+      }
+      return;
+    }
     const open = e.target.closest("[data-open]");
     if (open) {
       e.preventDefault();
@@ -763,6 +1018,14 @@
 
   document.addEventListener("keydown", (e) => {
     if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target?.tagName)) return;
+    const cmpModal = $("#compare-modal");
+    if (cmpModal && !cmpModal.hidden) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeCompareModal();
+      }
+      return;
+    }
     if (state.route === "bike") {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -773,6 +1036,18 @@
       } else if (e.key === "ArrowRight") {
         const nextBtn = $("#next-ph");
         if (nextBtn) nextBtn.click();
+      }
+    } else if (state.route === "home" && state.view === "deck") {
+      const list = filtered();
+      if (!list.length) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        state.deckIndex = (state.deckIndex - 1 + list.length) % list.length;
+        renderGrid();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        state.deckIndex = (state.deckIndex + 1) % list.length;
+        renderGrid();
       }
     }
   });
