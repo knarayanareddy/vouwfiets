@@ -496,7 +496,7 @@
           <p class="lead-s" style="margin:8px 0 0">${highest ? `${L.highest}: ${euro(highest)} · ${bike.bidCount} ${L.bids}` : L.noBids} · ${L.minBid} ${euro(minNext)}</p>
           <p class="lead-s">${L.bidLead}</p>
           <form class="bid-form" id="bid-form">
-            <input type="number" name="amount" min="${minNext}" step="5" placeholder="${L.yourBid}" required>
+            <input type="number" name="amount" min="${minNext}" step="1" placeholder="${L.yourBid}" required>
             <input type="text" name="name" placeholder="${L.yourName}" maxlength="40">
             <button class="btn btn-signal" type="submit">${L.placeBid}</button>
           </form>
