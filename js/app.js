@@ -120,17 +120,18 @@
     const subject = state.lang === "nl"
       ? `Interesse in ${bike.brand} ${bike.model} (${bike.ref})`
       : `Inquiry: ${bike.brand} ${bike.model} (${bike.ref})`;
-    const pairNote = (bike.qty || 1) > 1 ? (state.lang === "nl" ? " (2 stuks)" : " (pair)") : "";
+    const pairNote = (bike.qty || 1) > 1 ? (state.lang === "nl" ? ", 2 stuks" : ", pair") : "";
     const body = state.lang === "nl"
       ? `Hallo,\n\nIk heb interesse in de ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods.\nVraagprijs: ${euro(bike.price)}.\n${extra ? extra + "\n\n" : "\n"}Ik wil graag een afspraak maken voor bezichtiging / proefrit in Delft.\n\nMet vriendelijke groet,`
       : `Hello,\n\nI am interested in the ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods.\nAsking price: ${euro(bike.price)}.\n${extra ? extra + "\n\n" : "\n"}I would like to arrange a viewing / test ride in Delft.\n\nBest regards,`;
-    return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
 
   function mpText(bike) {
+    const yr = bike.year ? ` (${bike.year})` : "";
     return state.lang === "nl"
-      ? `Hallo, ik reageer op Vouwloods ref ${bike.ref} — ${bike.brand} ${bike.model} (${bike.year}). Ik wil hem graag bekijken in Delft.`
-      : `Hello, contacting about Vouwloods ref ${bike.ref} — ${bike.brand} ${bike.model} (${bike.year}). I'd like to view it in Delft.`;
+      ? `Hallo, ik reageer op Vouwloods ref ${bike.ref} — ${bike.brand} ${bike.model}${yr}. Ik wil hem graag bekijken in Delft.`
+      : `Hello, contacting about Vouwloods ref ${bike.ref} — ${bike.brand} ${bike.model}${yr}. I'd like to view it in Delft.`;
   }
 
   function listingText(bike) {
@@ -151,6 +152,29 @@
     el.classList.add("show");
     clearTimeout(toast._t);
     toast._t = setTimeout(() => el.classList.remove("show"), 2600);
+  }
+
+  async function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (err) {}
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    } catch (e) {
+      document.body.removeChild(ta);
+      return false;
+    }
   }
 
   function parseRoute() {
@@ -231,11 +255,18 @@
     const L = t();
     $("#lang-nl").classList.toggle("on", state.lang === "nl");
     $("#lang-en").classList.toggle("on", state.lang === "en");
+    $("#lang-nl").setAttribute("aria-pressed", state.lang === "nl");
+    $("#lang-en").setAttribute("aria-pressed", state.lang === "en");
     $("#nav-inv").textContent = L.navInventory;
     $("#nav-how").textContent = L.navHow;
     $("#nav-faq").textContent = L.navFaq;
     $("#nav-wa").innerHTML = L.wa;
     $("#nav-wa").href = `https://wa.me/${window.VOUW.whatsapp.replace(/[^\d]/g, "")}`;
+    if (state.route !== "bike") {
+      document.title = state.lang === "nl"
+        ? "Vouwloods · Delft — Vouwfietsen Showroom"
+        : "Vouwloods · Delft — Folding Bikes Showroom";
+    }
     const banner = $("#demo-banner");
     if (window.VOUW.demoInventory) {
       banner.hidden = false;
@@ -289,20 +320,16 @@
     const root = $("#coverflow");
     if (!root) return;
     const items = featured();
-    if (root.children.length) {
-      root.dataset.n = String(root.children.length);
-      startCoverflowAuto();
-      return;
-    }
     root.dataset.n = String(items.length);
     const L = t();
     root.innerHTML = items.map((b) => {
       const src = img(b.studio || b.photos[0]);
       const tag = b.studio ? `<span class="badge pair">${L.atmosphere}</span>` : "";
+      const pairText = (b.qty || 1) > 1 ? ` · ${L.pair}` : "";
       return `<a class="cf-card" href="#/bike/${b.ref}">
         <img src="${src}" alt="${b.brand} ${b.model}">
         ${tag}
-        <div class="meta"><small>${b.ref}${(b.qty || 1) > 1 ? " · 2" : ""}</small><strong>${b.brand} ${b.model}</strong>${euro(b.price)}</div>
+        <div class="meta"><small>${b.ref}${pairText}</small><strong>${b.brand} ${b.model}</strong>${euro(b.price)}</div>
       </a>`;
     }).join("");
     startCoverflowAuto();
@@ -360,12 +387,15 @@
     const L = t();
     const inC = state.compare.includes(b.ref);
     const highest = b.currentBid || 0;
+    const priceDisplay = (b.qty || 1) > 1 && b.unitPrice
+      ? `<div class="price">${euro(b.unitPrice)} <small style="font-size:0.55em;font-weight:400;color:var(--muted)">${L.each} · ${euro(b.price)} ${L.together}</small></div>`
+      : `<div class="price">${euro(b.price)}</div>`;
     return `<article class="card tilt" data-open="${b.ref}">
-      <div class="shot"><img src="${img(b.photos[0])}" alt="">
+      <div class="shot"><img src="${img(b.photos[0])}" alt="${b.brand} ${b.model} (${b.ref})">
         <span class="badge">${b.ref}</span>
         ${b.electric ? `<span class="badge e">${L.electric}</span>` : ""}
         ${(b.qty || 1) > 1 ? `<span class="badge pair">${L.pair}</span>` : ""}
-        ${b.status !== "available" ? `<span class="badge res">${L.status[b.status]}</span>` : ""}
+        ${b.status !== "available" ? `<span class="badge ${b.status === "sold" ? "sold" : "res"}">${L.status[b.status]}</span>` : ""}
       </div>
       <div class="card-body">
         <div class="refcode">${b.year ? b.year + " · " : ""}${b.color[state.lang]}</div>
@@ -377,7 +407,7 @@
           <span class="pill">${b.weightKg} ${L.kg}</span>
         </div>
         <div class="price-row">
-          <div class="price">${euro(b.price)}</div>
+          ${priceDisplay}
           <div class="bidlet">${highest ? `${L.highest} ${euro(highest)}<br>${b.bidCount} ${L.bids}` : L.noBids}</div>
         </div>
         <div class="card-actions">
@@ -439,15 +469,22 @@
 
   function renderProduct() {
     const L = t();
-    const bike = state.bikes.find((b) => b.ref === state.ref);
+    const bike = state.bikes.find((b) => b.ref.toLowerCase() === (state.ref || "").toLowerCase());
     $("#page-home").hidden = true;
     $("#page-product").hidden = false;
     if (!bike) {
-      $("#page-product").innerHTML = `<p class="empty">${L.empty}</p>`;
+      $("#page-product").innerHTML = `
+        <button class="backlink" data-go="#/">${L.back}</button>
+        <div style="padding:48px 16px;text-align:center">
+          <h2>${state.lang === "nl" ? "Fiets niet gevonden" : "Bike not found"}</h2>
+          <p class="lead-s" style="margin:8px 0 16px">${state.lang === "nl" ? "Deze fiets is mogelijk al verkocht of het referentienummer klopt niet." : "This bike may already be sold or the reference number is invalid."}</p>
+          <a class="btn btn-brass" href="#/">${L.back}</a>
+        </div>`;
       return;
     }
+    document.title = `${bike.brand} ${bike.model} (${bike.ref}) · Vouwloods Delft`;
     const highest = bike.currentBid || 0;
-    const minNext = Math.max(bike.minBid, highest + 5);
+    const minNext = Math.ceil(Math.max(bike.minBid, highest + 5));
     const hist = (bike.localHistory || [])
       .map((h) => `<li>${euro(h.amount)} — ${escapeHtml(h.name)}</li>`)
       .join("");
@@ -461,6 +498,9 @@
         }</p></div>`
       : "";
 
+    const trSpecs = window.I18N.specsTranslate || {};
+    const trAcc = window.I18N.accessories || {};
+
     $("#page-product").innerHTML = `
       <button class="backlink" data-go="#/">${L.back}</button>
       <div class="product">
@@ -469,14 +509,14 @@
             <img class="viewer-img is-on" id="viewer-a" src="${img(bike.photos[0])}" alt="${bike.brand} ${bike.model}">
             <img class="viewer-img" id="viewer-b" alt="">
             <div class="viewer-tools">
-              <button class="btn btn-ghost" id="prev-ph" type="button">‹</button>
+              <button class="btn btn-ghost" id="prev-ph" type="button" aria-label="Vorige foto">‹</button>
               <span id="ph-label">1 / ${bike.photos.length}</span>
-              <button class="btn btn-ghost" id="next-ph" type="button">›</button>
+              <button class="btn btn-ghost" id="next-ph" type="button" aria-label="Volgende foto">›</button>
             </div>
           </div>
           <div class="thumbs">
-            ${bike.photos.map((p, i) => `<button data-photo="${i}" class="${i === 0 ? "on" : ""}"><img src="${img(p)}" alt=""></button>`).join("")}
-            ${bike.studio ? `<button data-studio="1" class="studio-thumb"><img src="${img(bike.studio)}" alt=""><span>${L.atmosphere}</span></button>` : ""}
+            ${bike.photos.map((p, i) => `<button data-photo="${i}" class="${i === 0 ? "on" : ""}" aria-label="Foto ${i + 1}"><img src="${img(p)}" alt=""></button>`).join("")}
+            ${bike.studio ? `<button data-studio="1" class="studio-thumb" aria-label="${L.atmosphere}"><img src="${img(bike.studio)}" alt=""><span>${L.atmosphere}</span></button>` : ""}
           </div>
           <div class="note"><strong>${L.notes}</strong><p>${bike.notes[state.lang]}</p></div>
           <div class="defect"><strong>${L.defects}</strong><p>${bike.defects[state.lang]}</p></div>
@@ -486,14 +526,14 @@
             <tr><th>${L.model}</th><td>${bike.model}</td></tr>
             ${bike.year ? `<tr><th>${L.year}</th><td>${bike.year}</td></tr>` : ""}
             <tr><th>${L.color}</th><td>${bike.color[state.lang]}</td></tr>
-            <tr><th>${L.gears}</th><td>${bike.gears}</td></tr>
+            <tr><th>${L.gears}</th><td>${bike.gears} ${L.gears}</td></tr>
             <tr><th>${L.wheel}</th><td>${bike.wheel}"</td></tr>
             <tr><th>${L.weight}</th><td>${bike.weightKg} kg</td></tr>
-            <tr><th>${L.folded}</th><td>${bike.folded}</td></tr>
-            <tr><th>${L.bar}</th><td>${bike.bar}</td></tr>
-            <tr><th>${L.brakes}</th><td>${bike.brakes}</td></tr>
-            <tr><th>${L.tires}</th><td>${bike.tires}</td></tr>
-            <tr><th>${L.included}</th><td>${bike.included.join(", ") || "—"}</td></tr>
+            <tr><th>${L.folded}</th><td>${(trSpecs[bike.folded] && trSpecs[bike.folded][state.lang]) || bike.folded}</td></tr>
+            <tr><th>${L.bar}</th><td>${(trSpecs[bike.bar] && trSpecs[bike.bar][state.lang]) || bike.bar}</td></tr>
+            <tr><th>${L.brakes}</th><td>${(trSpecs[bike.brakes] && trSpecs[bike.brakes][state.lang]) || bike.brakes}</td></tr>
+            <tr><th>${L.tires}</th><td>${(trSpecs[bike.tires] && trSpecs[bike.tires][state.lang]) || bike.tires}</td></tr>
+            <tr><th>${L.included}</th><td>${bike.included.map((item) => (trAcc[item] && trAcc[item][state.lang]) || item).join(", ") || "—"}</td></tr>
           </table>
         </div>
         <aside class="buybox">
@@ -503,12 +543,12 @@
             <span class="pill cond-${bike.condition}">${L.cond[bike.condition]}</span>
             ${bike.electric ? `<span class="pill">${L.electric}</span>` : ""}
           </div>
-          <div class="ask">${euro(bike.price)} <small>${L.asking}</small></div>
+          <div class="ask">${euro(bike.price)} <small>${L.asking}</small>${qty > 1 && bike.unitPrice ? `<span style="display:block;font-size:0.5em;font-weight:400;color:var(--muted);margin-top:2px">${euro(bike.unitPrice)} ${L.each}</span>` : ""}</div>
           ${pairHtml}
           <p class="lead-s" style="margin:8px 0 0">${highest ? `${L.highest}: ${euro(highest)} · ${bike.bidCount} ${L.bids}` : L.noBids} · ${L.minBid} ${euro(minNext)}</p>
           <p class="lead-s">${L.bidLead}</p>
           <form class="bid-form" id="bid-form">
-            <input type="number" name="amount" min="${minNext}" step="1" placeholder="${L.yourBid}" required>
+            <input type="number" name="amount" min="${minNext}" step="1" max="50000" placeholder="${L.yourBid}" required>
             <input type="text" name="name" placeholder="${L.yourName}" maxlength="40">
             <button class="btn btn-signal" type="submit">${L.placeBid}</button>
           </form>
@@ -529,6 +569,7 @@
 
     const gallery = bike.photos.slice();
     if (bike.studio) gallery.push(bike.studio);
+    gallery.forEach((p) => { const imgEl = new Image(); imgEl.src = img(p); });
     let photoI = 0;
     let frontIsA = true;
     const showPhoto = (i) => {
@@ -540,6 +581,7 @@
       const outgoing = frontIsA ? $("#viewer-a") : $("#viewer-b");
       if (incoming && outgoing) {
         incoming.src = img(gallery[photoI]);
+        incoming.alt = `${bike.brand} ${bike.model}`;
         incoming.classList.remove("is-on");
         void incoming.offsetWidth;
         incoming.classList.add("is-on");
@@ -547,7 +589,7 @@
         frontIsA = !frontIsA;
       }
       const lab = $("#ph-label");
-      if (lab) lab.textContent = isStudio ? L.atmosphereHint : `${photoI + 1} / ${bike.photos.length}`;
+      if (lab) lab.textContent = isStudio ? L.atmosphere : `${photoI + 1} / ${bike.photos.length}`;
       $$(".thumbs button").forEach((b) => {
         const idx = b.dataset.photo !== undefined ? Number(b.dataset.photo) : gallery.length - 1;
         b.classList.toggle("on", idx === photoI);
@@ -562,11 +604,11 @@
       };
     });
     $("#copy-msg").onclick = async () => {
-      await navigator.clipboard.writeText(mpText(bike));
+      await copyText(mpText(bike));
       toast(L.copied);
     };
     $("#copy-listing").onclick = async () => {
-      await navigator.clipboard.writeText(listingText(bike));
+      await copyText(listingText(bike));
       toast(L.listingCopied);
     };
     $("#share").onclick = async () => {
@@ -574,14 +616,14 @@
       if (navigator.share) {
         try { await navigator.share({ title: `${bike.brand} ${bike.model}`, url }); return; } catch {}
       }
-      await navigator.clipboard.writeText(url);
+      await copyText(url);
       toast(L.copied);
     };
     $("#bid-form").onsubmit = (e) => {
       e.preventDefault();
       if (bike.status !== "available") return toast(L.bidReserved);
       const fd = new FormData(e.target);
-      const amount = Number(fd.get("amount"));
+      const amount = Math.floor(Number(fd.get("amount")));
       const name = String(fd.get("name") || "").trim();
       if (!amount || amount < minNext) return toast(L.bidLow);
       const rec = bidStore.add(bike.ref, amount, name);
@@ -589,30 +631,45 @@
       bike.bidCount = rec.bidCount;
       bike.localHistory = rec.history;
       toast(L.bidOk);
-      renderProduct();
       const extra =
         state.lang === "nl"
           ? `Ik bied ${euro(amount)}.`
           : `I bid ${euro(amount)}.`;
-      setTimeout(() => window.open(waLink(bike, extra), "_blank"), 400);
+      // Open WhatsApp synchronously in user-event thread to prevent popup blockers
+      window.open(waLink(bike, extra), "_blank");
+      renderProduct();
     };
 
-    let dragX = null;
+    let startX = 0;
+    let startY = 0;
+    let isTracking = false;
     const viewer = $("#viewer");
-    viewer.addEventListener("pointerdown", (e) => { dragX = e.clientX; viewer.setPointerCapture(e.pointerId); });
+    viewer.addEventListener("pointerdown", (e) => {
+      startX = e.clientX;
+      startY = e.clientY;
+      isTracking = true;
+    }, { passive: true });
     viewer.addEventListener("pointerup", (e) => {
-      if (dragX == null) return;
-      const dx = e.clientX - dragX;
-      dragX = null;
-      if (Math.abs(dx) > 40) showPhoto(photoI + (dx < 0 ? 1 : -1));
+      if (!isTracking) return;
+      isTracking = false;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        showPhoto(photoI + (dx < 0 ? 1 : -1));
+      }
+    });
+    viewer.addEventListener("pointercancel", () => {
+      isTracking = false;
     });
   }
 
   function renderCompare() {
     const L = t();
     const tray = $("#compare-tray");
+    state.compare = state.compare.filter((ref) => state.bikes.some((b) => b.ref === ref));
     if (!state.compare.length) {
       tray.classList.remove("show");
+      tray.innerHTML = "";
       return;
     }
     const items = state.compare
@@ -621,7 +678,7 @@
     tray.classList.add("show");
     tray.innerHTML = `
       <strong>${L.compareTitle}</strong>
-      ${items.map((b) => `<img src="${img(b.photos[0])}" alt=""><span>${b.ref}<br>${euro(b.price)}</span>`).join("")}
+      ${items.map((b) => `<img src="${img(b.photos[0])}" alt="${b.ref}"><span>${b.ref}<br>${euro(b.price)}</span>`).join("")}
       <span class="sp">${items.map((b) => `${b.brand} ${b.model} (${L.cond[b.condition]})`).join(" · ")}</span>
       <button class="btn btn-ghost" id="cmp-clear">${L.compareClear}</button>`;
     $("#cmp-clear").onclick = () => { state.compare = []; render(); };
@@ -648,12 +705,6 @@
 
   /* ---------- events ---------- */
   document.addEventListener("click", (e) => {
-    const open = e.target.closest("[data-open]");
-    if (open) {
-      e.preventDefault();
-      go("#/bike/" + open.getAttribute("data-open"));
-      return;
-    }
     const cmp = e.target.closest("[data-compare]");
     if (cmp) {
       e.preventDefault();
@@ -666,6 +717,12 @@
       render();
       return;
     }
+    const open = e.target.closest("[data-open]");
+    if (open) {
+      e.preventDefault();
+      go("#/bike/" + open.getAttribute("data-open"));
+      return;
+    }
     const goEl = e.target.closest("[data-go]");
     if (goEl) {
       go(goEl.getAttribute("data-go"));
@@ -676,6 +733,21 @@
       state.view = viewBtn.getAttribute("data-view");
       renderGrid();
       $$("[data-view]").forEach((b) => b.classList.toggle("on", b === viewBtn));
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (state.route === "bike") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        go("#/");
+      } else if (e.key === "ArrowLeft") {
+        const prevBtn = $("#prev-ph");
+        if (prevBtn) prevBtn.click();
+      } else if (e.key === "ArrowRight") {
+        const nextBtn = $("#next-ph");
+        if (nextBtn) nextBtn.click();
+      }
     }
   });
 
