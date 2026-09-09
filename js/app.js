@@ -177,6 +177,32 @@
       : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
   }
 
+  function visitorCounter() {
+    // Count each browser session once. Uses countapi.xyz — a free, no-auth hit counter.
+    const VISITED_KEY = "vouw-visited-v1";
+    const COUNT_EL = "#visitor-count";
+    const NAMESPACE = "vouwloods-delft";
+    const KEY = "visitors";
+    const alreadyCounted = localStorage.getItem(VISITED_KEY);
+    const endpoint = alreadyCounted
+      ? `https://api.countapi.xyz/get/${NAMESPACE}/${KEY}`
+      : `https://api.countapi.xyz/hit/${NAMESPACE}/${KEY}`;
+    fetch(endpoint)
+      .then((r) => r.json())
+      .then((data) => {
+        if (typeof data.value === "number") {
+          if (!alreadyCounted) localStorage.setItem(VISITED_KEY, "1");
+          const el = $(COUNT_EL);
+          if (el) {
+            const n = data.value.toLocaleString(state.lang === "nl" ? "nl-NL" : "en-GB");
+            el.textContent = `👥 ${n} ${state.lang === "nl" ? "bezoekers" : "visitors"}`;
+            el.title = state.lang === "nl" ? "Totaal aantal unieke bezoekers" : "Total unique visitors";
+          }
+        }
+      })
+      .catch(() => {}); // Fail silently — counter is optional
+  }
+
   function waLink(bike, extra = "") {
     const num = (window.VOUW.whatsapp || "").replace(/[^\d]/g, "");
     const pairNote = (bike.qty || 1) > 1 ? (state.lang === "nl" ? ", 2 stuks" : ", pair") : "";
@@ -1296,6 +1322,7 @@
       state.bikes = data;
       bidStore.merge(state.bikes);
       render();
+      visitorCounter();
       bidStore.fetchRemote();
       if (window.VOUW && window.VOUW.bidSync && window.VOUW.bidSync.enabled && window.VOUW.bidSync.pollIntervalMs) {
         setInterval(() => bidStore.fetchRemote(), window.VOUW.bidSync.pollIntervalMs);
