@@ -115,6 +115,17 @@
     return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
   }
 
+  function formatPhone(num) {
+    const clean = String(num || "").replace(/[^\d]/g, "");
+    if (clean.startsWith("316") && clean.length === 11) {
+      return `+31 6 ${clean.slice(3, 5)} ${clean.slice(5, 7)} ${clean.slice(7, 9)} ${clean.slice(9)}`;
+    }
+    if (clean.startsWith("31") && clean.length > 9) {
+      return `+31 ${clean.slice(2)}`;
+    }
+    return num ? `+${clean}` : "";
+  }
+
   function emailLink(bike, extra = "") {
     const to = window.VOUW.email || "";
     const subject = state.lang === "nl"
@@ -563,7 +574,7 @@
             <button class="btn btn-ghost" id="share">${L.share}</button>
           </div>
           <p class="lead-s" style="margin-top:14px"><strong>${L.pickup}:</strong> ${window.VOUW.city}, ${window.VOUW.region} · ${window.VOUW.pickupHours[state.lang]}<br>
-          <strong>${L.pay}:</strong> ${window.VOUW.payment[state.lang]}${window.VOUW.email ? `<br><strong>${L.email}:</strong> <a href="${emailLink(bike)}" style="color:var(--signal);text-decoration:underline">${window.VOUW.email}</a>` : ""}</p>
+          <strong>${L.pay}:</strong> ${window.VOUW.payment[state.lang]}${window.VOUW.whatsapp ? `<br><strong>WhatsApp:</strong> <a target="_blank" rel="noopener" href="${waLink(bike)}" style="color:var(--signal);text-decoration:underline">${formatPhone(window.VOUW.whatsapp)}</a>` : ""}${window.VOUW.email ? `<br><strong>${L.email}:</strong> <a href="${emailLink(bike)}" style="color:var(--signal);text-decoration:underline">${window.VOUW.email}</a>` : ""}</p>
         </aside>
       </div>`;
 
