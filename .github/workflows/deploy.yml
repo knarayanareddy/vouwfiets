@@ -1,0 +1,63 @@
+name: Deploy Vouwloods to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate data/bikes.json
+        run: |
+          jq . data/bikes.json > /dev/null
+          echo "data/bikes.json is valid JSON"
+
+      - name: Sync data/bikes.json to js/bikes.js
+        run: |
+          ./scripts/sync-bikes.sh
+
+      - name: Commit synced js/bikes.js if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet js/bikes.js; then
+            git add js/bikes.js
+            git commit -m "Auto-sync js/bikes.js from data/bikes.json [skip ci]"
+            git push
+          else
+            echo "js/bikes.js already in sync"
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build-and-sync
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
