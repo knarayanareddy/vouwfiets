@@ -766,7 +766,7 @@ window.BIKES = [
          "en" : "Like-new, minimal signs of use. Check all photos."
       },
       "notes" : {
-         "nl" : "Tern Link P7i: Premium opklapfiets in zeer goede staat met 7 Shimano Nexus naafversnellingen (onderhoudsarm, geen rommelige derailleur). Uitgerust met naafdynamo met koplamp en Trolley Rack met transportwieltjes en geïntegreerde opberghoes/tas (rolt soepel mee). Oorspronkelijke nieuwwaarde ca. €1.300. Vraagprijs €599. Ophalen in Delft.",
+         "nl" : "Tern Link P7i: Premium vouwfiets in zeer goede staat met 7 Shimano Nexus naafversnellingen (onderhoudsarm, geen rommelige derailleur). Uitgerust met naafdynamo met koplamp en Trolley Rack met transportwieltjes en geïntegreerde opberghoes/tas (rolt soepel mee). Oorspronkelijke nieuwwaarde ca. €1.300. Vraagprijs €599. Ophalen in Delft.",
          "en" : "Tern Link P7i: Premium folding bike in like-new condition with 7-speed Shimano Nexus internal gear hub (low maintenance, no exposed derailleur). Equipped with hub dynamo headlight and Trolley Rack with luggage wheels and integrated carry cover bag (rolls smoothly like a trolley). Original retail price ~€1,300. Asking price €599. Pickup in Delft."
       },
       "photos" : [

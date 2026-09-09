@@ -108,15 +108,23 @@
   function waLink(bike, extra = "") {
     const num = (window.VOUW.whatsapp || "").replace(/[^\d]/g, "");
     const L = t();
+    const pairNote = (bike.qty || 1) > 1 ? (state.lang === "nl" ? ", 2 stuks" : ", pair") : "";
+    const defAsk = state.lang === "nl"
+      ? "Is deze nog beschikbaar en kan ik langskomen voor een proefrit in Delft?"
+      : "Is this still available and can I arrange a test ride in Delft?";
+    const tail = extra ? extra : defAsk;
     const msg =
       state.lang === "nl"
-        ? `Hallo, ik heb interesse in ${bike.brand} ${bike.model} (${bike.ref}${(bike.qty || 1) > 1 ? ", 2 stuks" : ""}) via Vouwloods. Vraagprijs ${euro(bike.price)}. ${extra}`.trim()
-        : `Hello, I'm interested in ${bike.brand} ${bike.model} (${bike.ref}${(bike.qty || 1) > 1 ? ", pair" : ""}) via Vouwloods. Asking ${euro(bike.price)}. ${extra}`.trim();
+        ? `Hallo, ik heb interesse in de ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods. Vraagprijs ${euro(bike.price)}. ${tail}`.trim()
+        : `Hello, I'm interested in the ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods. Asking ${euro(bike.price)}. ${tail}`.trim();
     return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
   }
 
   function formatPhone(num) {
-    const clean = String(num || "").replace(/[^\d]/g, "");
+    let clean = String(num || "").replace(/[^\d]/g, "");
+    if (clean.startsWith("06") && clean.length === 10) {
+      clean = "316" + clean.slice(2);
+    }
     if (clean.startsWith("316") && clean.length === 11) {
       return `+31 6 ${clean.slice(3, 5)} ${clean.slice(5, 7)} ${clean.slice(7, 9)} ${clean.slice(9)}`;
     }
@@ -484,6 +492,7 @@
     $("#page-home").hidden = true;
     $("#page-product").hidden = false;
     if (!bike) {
+      document.title = `${state.lang === "nl" ? "Fiets niet gevonden" : "Bike not found"} · Vouwloods Delft`;
       $("#page-product").innerHTML = `
         <button class="backlink" data-go="#/">${L.back}</button>
         <div style="padding:48px 16px;text-align:center">
@@ -520,13 +529,13 @@
             <img class="viewer-img is-on" id="viewer-a" src="${img(bike.photos[0])}" alt="${bike.brand} ${bike.model}">
             <img class="viewer-img" id="viewer-b" alt="">
             <div class="viewer-tools">
-              <button class="btn btn-ghost" id="prev-ph" type="button" aria-label="Vorige foto">‹</button>
+              <button class="btn btn-ghost" id="prev-ph" type="button" aria-label="${state.lang === "nl" ? "Vorige foto" : "Previous photo"}">‹</button>
               <span id="ph-label">1 / ${bike.photos.length}</span>
-              <button class="btn btn-ghost" id="next-ph" type="button" aria-label="Volgende foto">›</button>
+              <button class="btn btn-ghost" id="next-ph" type="button" aria-label="${state.lang === "nl" ? "Volgende foto" : "Next photo"}">›</button>
             </div>
           </div>
           <div class="thumbs">
-            ${bike.photos.map((p, i) => `<button data-photo="${i}" class="${i === 0 ? "on" : ""}" aria-label="Foto ${i + 1}"><img src="${img(p)}" alt=""></button>`).join("")}
+            ${bike.photos.map((p, i) => `<button data-photo="${i}" class="${i === 0 ? "on" : ""}" aria-label="${state.lang === "nl" ? `Foto ${i + 1}` : `Photo ${i + 1}`}"><img src="${img(p)}" alt=""></button>`).join("")}
             ${bike.studio ? `<button data-studio="1" class="studio-thumb" aria-label="${L.atmosphere}"><img src="${img(bike.studio)}" alt=""><span>${L.atmosphere}</span></button>` : ""}
           </div>
           <div class="note"><strong>${L.notes}</strong><p>${bike.notes[state.lang]}</p></div>
@@ -573,8 +582,8 @@
             <button class="btn btn-ghost" id="copy-listing">${L.copyListing}</button>
             <button class="btn btn-ghost" id="share">${L.share}</button>
           </div>
-          <p class="lead-s" style="margin-top:14px"><strong>${L.pickup}:</strong> ${window.VOUW.city}, ${window.VOUW.region} · ${window.VOUW.pickupHours[state.lang]}<br>
-          <strong>${L.pay}:</strong> ${window.VOUW.payment[state.lang]}${window.VOUW.whatsapp ? `<br><strong>WhatsApp:</strong> <a target="_blank" rel="noopener" href="${waLink(bike)}" style="color:var(--signal);text-decoration:underline">${formatPhone(window.VOUW.whatsapp)}</a>` : ""}${window.VOUW.email ? `<br><strong>${L.email}:</strong> <a href="${emailLink(bike)}" style="color:var(--signal);text-decoration:underline">${window.VOUW.email}</a>` : ""}</p>
+          <p class="lead-s" style="margin-top:14px;line-height:1.75"><strong>${L.pickup}:</strong> ${window.VOUW.city}, ${window.VOUW.region} · ${window.VOUW.pickupHours[state.lang]}<br>
+          <strong>${L.pay}:</strong> ${window.VOUW.payment[state.lang]}${window.VOUW.whatsapp ? `<br><strong>WhatsApp:</strong> <a target="_blank" rel="noopener" href="${waLink(bike)}" style="color:#25d366;font-weight:600;text-decoration:underline">${formatPhone(window.VOUW.whatsapp)}</a>` : ""}${window.VOUW.email ? `<br><strong>${L.email}:</strong> <a href="${emailLink(bike)}" style="color:var(--signal);text-decoration:underline">${window.VOUW.email}</a>` : ""}</p>
         </aside>
       </div>`;
 
@@ -625,7 +634,12 @@
     $("#share").onclick = async () => {
       const url = location.href;
       if (navigator.share) {
-        try { await navigator.share({ title: `${bike.brand} ${bike.model}`, url }); return; } catch {}
+        try {
+          await navigator.share({ title: `${bike.brand} ${bike.model}`, url });
+          return;
+        } catch (err) {
+          if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;
+        }
       }
       await copyText(url);
       toast(L.copied);
@@ -636,7 +650,7 @@
       const fd = new FormData(e.target);
       const amount = Math.floor(Number(fd.get("amount")));
       const name = String(fd.get("name") || "").trim();
-      if (!amount || amount < minNext) return toast(L.bidLow);
+      if (!amount || !Number.isFinite(amount) || amount < minNext || amount > 50000) return toast(L.bidLow);
       const rec = bidStore.add(bike.ref, amount, name);
       bike.currentBid = rec.currentBid;
       bike.bidCount = rec.bidCount;
@@ -748,6 +762,7 @@
   });
 
   document.addEventListener("keydown", (e) => {
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target?.tagName)) return;
     if (state.route === "bike") {
       if (e.key === "Escape") {
         e.preventDefault();

@@ -374,6 +374,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   will-change: transform;
   cursor: pointer;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 .card:hover { box-shadow: 0 24px 50px rgba(0,0,0,.4); }
 .card .shot {
@@ -407,7 +409,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .badge.e + .badge.pair, .shot .badge.pair { top: 40px; }
 .badge.res { background: var(--fair); color: #111; }
 .badge.sold { background: #474b57; color: #fff; }
-.card-body { padding: 14px 16px 16px; }
+.card-body {
+  padding: 14px 16px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
 .refcode { color: var(--brass); font-size: 11px; letter-spacing: 0.16em; }
 .card h3 { font-size: 16px; margin: 4px 0 8px; }
 .meta-row { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-bottom: 12px; }
@@ -424,7 +431,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .price-row { display: flex; justify-content: space-between; align-items: baseline; }
 .price { font-family: var(--serif); font-size: 26px; }
 .bidlet { font-size: 12px; color: var(--muted); text-align: right; }
-.card-actions { display: flex; gap: 8px; margin-top: 12px; }
+.card-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 12px; }
 .card-actions .btn { flex: 1; justify-content: center; padding: 10px 10px; min-height: 44px; }
 
 .deck {
