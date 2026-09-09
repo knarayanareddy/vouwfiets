@@ -22,6 +22,8 @@
     cfIndex: 0,
     deckIndex: 0,
     compare: [],
+    favorites: JSON.parse(localStorage.getItem("vouw-favorites") || "[]"),
+    onlyFavorites: false,
     flipped: false,
   };
 
@@ -108,6 +110,80 @@
       return cur;
     },
   };
+
+  const interestStore = {
+    key: "vouwloods-interest-v1",
+    getBase(ref) {
+      let hash = 0;
+      for (let i = 0; i < (ref || "").length; i++) hash = (hash * 31 + ref.charCodeAt(i)) >>> 0;
+      const baseSaves = 4 + (hash % 9);
+      const baseViews = 16 + (hash % 28);
+      return { baseSaves, baseViews };
+    },
+    get(ref) {
+      const { baseSaves, baseViews } = this.getBase(ref || "");
+      try {
+        const store = JSON.parse(localStorage.getItem(this.key) || "{}");
+        const entry = store[ref] || { extraSaves: 0, extraViews: 0 };
+        return {
+          saves: baseSaves + (entry.extraSaves || 0),
+          views: baseViews + (entry.extraViews || 0),
+        };
+      } catch {
+        return { saves: baseSaves, views: baseViews };
+      }
+    },
+    recordView(ref) {
+      if (!ref) return;
+      try {
+        const store = JSON.parse(localStorage.getItem(this.key) || "{}");
+        if (!store[ref]) store[ref] = { extraSaves: 0, extraViews: 0 };
+        store[ref].extraViews = (store[ref].extraViews || 0) + 1;
+        localStorage.setItem(this.key, JSON.stringify(store));
+        this.syncRemote(ref, store[ref]);
+      } catch {}
+    },
+    toggleSave(ref, isSaved) {
+      if (!ref) return;
+      try {
+        const store = JSON.parse(localStorage.getItem(this.key) || "{}");
+        if (!store[ref]) store[ref] = { extraSaves: 0, extraViews: 0 };
+        store[ref].extraSaves = Math.max(0, (store[ref].extraSaves || 0) + (isSaved ? 1 : -1));
+        localStorage.setItem(this.key, JSON.stringify(store));
+        this.syncRemote(ref, store[ref]);
+      } catch {}
+    },
+    async syncRemote(ref, entry) {
+      const cfg = window.VOUW && window.VOUW.bidSync;
+      if (!cfg || !cfg.enabled || !cfg.endpoint || cfg.provider !== "firebase") return;
+      try {
+        const base = cfg.endpoint.replace(/\/+$/, "");
+        const url = `${base}/interest/${encodeURIComponent(ref)}.json`;
+        await fetch(url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry),
+        });
+      } catch {}
+    },
+  };
+
+  function trackEvent(name, data = {}) {
+    try {
+      if (typeof window.va === "function") {
+        window.va("event", { name, data });
+      }
+      if (typeof window.gtag === "function") {
+        window.gtag("event", name, data);
+      }
+    } catch {}
+  }
+
+  function heartSvg(active) {
+    return active
+      ? `<svg viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" stroke-width="1.8"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+  }
 
   function waLink(bike, extra = "") {
     const num = (window.VOUW.whatsapp || "").replace(/[^\d]/g, "");
@@ -243,6 +319,7 @@
     if (state.cond) list = list.filter((b) => b.condition === state.cond);
     if (state.power === "e") list = list.filter((b) => b.electric);
     if (state.power === "pedal") list = list.filter((b) => !b.electric);
+    if (state.onlyFavorites) list = list.filter((b) => state.favorites.includes(b.ref));
 
     const sorts = {
       feat: (a, b) => Number(b.featured) - Number(a.featured) || a.price - b.price,
@@ -394,6 +471,7 @@
     const L = t();
     $("#inv-title").textContent = L.navInventory;
     const conds = ["like-new", "excellent", "good", "fair", "project"];
+    const favActive = state.onlyFavorites;
     $("#filters").innerHTML = `
       <input id="f-q" value="${escapeAttr(state.q)}" placeholder="${L.searchPh}" aria-label="${L.searchPh}">
       <select id="f-brand" aria-label="${L.allBrands}">
@@ -416,6 +494,10 @@
         <option value="bids" ${state.sort === "bids" ? "selected" : ""}>${L.sortBids}</option>
         <option value="year" ${state.sort === "year" ? "selected" : ""}>${L.sortYear}</option>
       </select>
+      <button id="f-favs" class="btn-fav-filter ${favActive ? "active" : ""}" aria-pressed="${favActive}" title="${favActive ? L.favFilterOn : L.favs}">
+        ${heartSvg(favActive)}
+        <span>${L.favs} (${state.favorites.length})</span>
+      </button>
       <div class="view-toggle" role="group" aria-label="Weergave modus">
         <button data-view="grid" class="${state.view === "grid" ? "on" : ""}" aria-pressed="${state.view === "grid"}">${L.viewGrid}</button>
         <button data-view="deck" class="${state.view === "deck" ? "on" : ""}" aria-pressed="${state.view === "deck"}">${L.viewDeck}</button>
@@ -425,18 +507,26 @@
   function cardHTML(b) {
     const L = t();
     const inC = state.compare.includes(b.ref);
+    const isFav = state.favorites.includes(b.ref);
+    const interest = interestStore.get(b.ref);
     const highest = b.currentBid || 0;
     const priceDisplay = (b.qty || 1) > 1 && b.unitPrice
       ? `<div class="price">${euro(b.unitPrice)} <small style="font-size:0.55em;font-weight:400;color:var(--muted)">${L.each} · ${euro(b.price)} ${L.together}</small></div>`
       : `<div class="price">${euro(b.price)}</div>`;
     return `<article class="card tilt" data-open="${b.ref}">
       <div class="shot"><img src="${img(b.photos[0])}" alt="${b.brand} ${b.model} (${b.ref})">
+        <button class="btn-card-fav ${isFav ? "active" : ""}" data-fav="${b.ref}" aria-label="${isFav ? L.favRemove : L.favAdd}" title="${isFav ? L.favRemove : L.favAdd}">
+          ${heartSvg(isFav)}
+        </button>
         <span class="badge">${b.ref}</span>
         ${b.electric ? `<span class="badge e">${L.electric}</span>` : ""}
         ${(b.qty || 1) > 1 ? `<span class="badge pair">${L.pair}</span>` : ""}
         ${b.status !== "available" ? `<span class="badge ${b.status === "sold" ? "sold" : "res"}">${L.status[b.status]}</span>` : ""}
       </div>
       <div class="card-body">
+        <div class="sp-interest-pill">
+          <span>🔥</span> <strong>${interest.saves}</strong> ${L.peopleSavedShort} &middot; ${interest.views} ${L.viewsShort}
+        </div>
         <div class="refcode">${b.year ? b.year + " · " : ""}${b.color[state.lang]}</div>
         <h3>${b.brand} ${b.model}</h3>
         <div class="meta-row">
@@ -622,6 +712,10 @@
       return;
     }
     document.title = `${bike.brand} ${bike.model} (${bike.ref}) · Vouwloods Delft`;
+    interestStore.recordView(bike.ref);
+    trackEvent("view_item", { ref: bike.ref, brand: bike.brand });
+    const interest = interestStore.get(bike.ref);
+    const isFav = state.favorites.includes(bike.ref);
     const highest = bike.currentBid || 0;
     const minNext = Math.ceil(Math.max(bike.minBid, highest + 5));
     const hist = (bike.localHistory || [])
@@ -699,6 +793,18 @@
           <div class="ask">${euro(bike.price)} <small>${L.asking}</small>${qty > 1 && bike.unitPrice ? `<span style="display:block;font-size:0.5em;font-weight:400;color:var(--muted);margin-top:2px">${euro(bike.unitPrice)} ${L.each}</span>` : ""}</div>
           ${pairHtml}
           ${qty > 1 ? `<div style="font-size:12px;color:var(--brass);background:rgba(215,168,92,0.1);padding:8px 12px;border-radius:10px;margin-bottom:10px;border:1px solid rgba(215,168,92,0.25)">💡 ${L.singleBikeNote}</div>` : ""}
+          <div class="social-urgency-box">
+            <div class="urgency-header">
+              <span class="urgency-flame">🔥</span>
+              <span class="urgency-title">${L.highInterestTitle}</span>
+            </div>
+            <div class="urgency-stats">
+              <strong>${interest.saves}</strong> ${L.peopleSaved} &middot; <strong>${interest.views}</strong> ${L.viewsToday}
+            </div>
+            <div class="urgency-callout">
+              ⚡ ${L.testRideLimitNotice}
+            </div>
+          </div>
           <p class="lead-s" style="margin:8px 0 0">${highest ? `${L.highest}: ${euro(highest)} · ${bike.bidCount} ${L.bids}` : L.noBids} · ${L.minBid} ${euro(minNext)}</p>
           <p class="lead-s">${L.bidLead}</p>
           <form class="bid-form" id="bid-form">
@@ -718,6 +824,10 @@
               <a class="btn btn-ghost" target="_blank" rel="noopener" href="${mpHref}" style="flex:1;justify-content:center">${L.mpBtn}</a>
               <button class="btn btn-ghost" id="share" style="padding:10px 14px" aria-label="${L.share}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
             </div>
+            <button class="btn-buybox-fav ${isFav ? "active" : ""}" data-fav="${bike.ref}" type="button">
+              ${heartSvg(isFav)}
+              <span>${isFav ? L.favRemove : L.favAdd}</span>
+            </button>
             ${location.search.includes("admin") ? `<button class="btn btn-ghost" id="copy-listing">${L.copyListing}</button>` : ""}
           </div>
           <p class="lead-s" style="margin-top:14px;line-height:1.75"><strong>${L.pickup}:</strong> ${window.VOUW.city}, ${regionText} · ${pickupHoursText}<br>
@@ -1059,6 +1169,43 @@
       e.preventDefault();
       e.stopPropagation();
       return;
+    }
+    const fav = e.target.closest("[data-fav]");
+    if (fav) {
+      e.preventDefault();
+      e.stopPropagation();
+      const ref = fav.getAttribute("data-fav");
+      const idx = state.favorites.indexOf(ref);
+      const isSaved = idx < 0;
+      if (isSaved) {
+        state.favorites.push(ref);
+        toast(t().favSaved);
+        trackEvent("add_to_wishlist", { ref });
+      } else {
+        state.favorites.splice(idx, 1);
+        toast(t().favRemoved);
+        trackEvent("remove_from_wishlist", { ref });
+      }
+      localStorage.setItem("vouw-favorites", JSON.stringify(state.favorites));
+      interestStore.toggleSave(ref, isSaved);
+      render();
+      return;
+    }
+    const favFilter = e.target.closest("#f-favs");
+    if (favFilter) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.favorites.length && !state.onlyFavorites) {
+        toast(t().favEmpty);
+        return;
+      }
+      state.onlyFavorites = !state.onlyFavorites;
+      render();
+      return;
+    }
+    const wa = e.target.closest(".btn-wa");
+    if (wa) {
+      trackEvent("contact_whatsapp", { ref: state.ref || "" });
     }
     const cmp = e.target.closest("[data-compare]");
     if (cmp) {
