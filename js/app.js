@@ -124,10 +124,13 @@
   function listingText(bike) {
     const L = t();
     const loc = window.VOUW.city;
+    const siteUrl = (location.origin && location.origin !== "null" && location.protocol.startsWith("http"))
+      ? `${location.origin}${location.pathname.replace(/\/+$/, "")}/#/bike/${bike.ref}`
+      : `https://knarayanareddy.github.io/vouwfiets/#/bike/${bike.ref}`;
     if (state.lang === "nl") {
-      return `${bike.brand} ${bike.model} vouwfiets (${bike.year}) — ${bike.color.nl}\nRef: ${bike.ref}\nVraagprijs: ${euro(bike.price)} | bieden vanaf ${euro(bike.minBid)}\nStaat: ${L.cond[bike.condition]}\n${bike.gears} versnellingen · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · elektrisch" : ""}\n\n${bike.notes.nl}\n\nGebreken: ${bike.defects.nl}\nInbegrepen: ${bike.included.join(", ") || "—"}\nOphalen in ${loc}. Hele voorraad: [plak hier je sitelink] #/${"bike"}/${bike.ref}`;
+      return `${bike.brand} ${bike.model} vouwfiets (${bike.year || "ZGAN"}) — ${bike.color.nl}\nRef: ${bike.ref}\nVraagprijs: ${euro(bike.price)} | bieden vanaf ${euro(bike.minBid)}\nStaat: ${L.cond[bike.condition]}\n${bike.gears} versnellingen · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · elektrisch" : ""}\n\n${bike.notes.nl}\n\nGebreken: ${bike.defects.nl}\nInbegrepen: ${bike.included.join(", ") || "—"}\nOphalen in ${loc}. Bekijk alle foto's & voorraad: ${siteUrl}`;
     }
-    return `${bike.brand} ${bike.model} folding bike (${bike.year}) — ${bike.color.en}\nRef: ${bike.ref}\nAsking: ${euro(bike.price)} | bids from ${euro(bike.minBid)}\nCondition: ${L.cond[bike.condition]}\n${bike.gears} gears · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · electric" : ""}\n\n${bike.notes.en}\n\nDefects: ${bike.defects.en}\nIncluded: ${bike.included.join(", ") || "—"}\nPickup in ${loc}. Full stock: [paste your site link] #/bike/${bike.ref}`;
+    return `${bike.brand} ${bike.model} folding bike (${bike.year || "like new"}) — ${bike.color.en}\nRef: ${bike.ref}\nAsking: ${euro(bike.price)} | bids from ${euro(bike.minBid)}\nCondition: ${L.cond[bike.condition]}\n${bike.gears} gears · ${bike.wheel}" · ${bike.weightKg} kg${bike.electric ? " · electric" : ""}\n\n${bike.notes.en}\n\nDefects: ${bike.defects.en}\nIncluded: ${bike.included.join(", ") || "—"}\nPickup in ${loc}. View all photos & stock: ${siteUrl}`;
   }
 
   function toast(msg) {
