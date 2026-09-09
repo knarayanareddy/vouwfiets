@@ -113,32 +113,24 @@
 
   const interestStore = {
     key: "vouwloods-interest-v1",
-    getBase(ref) {
-      let hash = 0;
-      for (let i = 0; i < (ref || "").length; i++) hash = (hash * 31 + ref.charCodeAt(i)) >>> 0;
-      const baseSaves = 4 + (hash % 9);
-      const baseViews = 16 + (hash % 28);
-      return { baseSaves, baseViews };
-    },
     get(ref) {
-      const { baseSaves, baseViews } = this.getBase(ref || "");
       try {
         const store = JSON.parse(localStorage.getItem(this.key) || "{}");
-        const entry = store[ref] || { extraSaves: 0, extraViews: 0 };
+        const entry = store[ref] || { saves: 0, views: 0 };
         return {
-          saves: baseSaves + (entry.extraSaves || 0),
-          views: baseViews + (entry.extraViews || 0),
+          saves: entry.saves || 0,
+          views: entry.views || 0,
         };
       } catch {
-        return { saves: baseSaves, views: baseViews };
+        return { saves: 0, views: 0 };
       }
     },
     recordView(ref) {
       if (!ref) return;
       try {
         const store = JSON.parse(localStorage.getItem(this.key) || "{}");
-        if (!store[ref]) store[ref] = { extraSaves: 0, extraViews: 0 };
-        store[ref].extraViews = (store[ref].extraViews || 0) + 1;
+        if (!store[ref]) store[ref] = { saves: 0, views: 0 };
+        store[ref].views = (store[ref].views || 0) + 1;
         localStorage.setItem(this.key, JSON.stringify(store));
         this.syncRemote(ref, store[ref]);
       } catch {}
@@ -147,8 +139,8 @@
       if (!ref) return;
       try {
         const store = JSON.parse(localStorage.getItem(this.key) || "{}");
-        if (!store[ref]) store[ref] = { extraSaves: 0, extraViews: 0 };
-        store[ref].extraSaves = Math.max(0, (store[ref].extraSaves || 0) + (isSaved ? 1 : -1));
+        if (!store[ref]) store[ref] = { saves: 0, views: 0 };
+        store[ref].saves = Math.max(0, (store[ref].saves || 0) + (isSaved ? 1 : -1));
         localStorage.setItem(this.key, JSON.stringify(store));
         this.syncRemote(ref, store[ref]);
       } catch {}
@@ -524,7 +516,7 @@
         ${b.status !== "available" ? `<span class="badge ${b.status === "sold" ? "sold" : "res"}">${L.status[b.status]}</span>` : ""}
       </div>
       <div class="card-body">
-        <div class="sp-interest-pill">
+        <div class="sp-interest-pill" style="${interest.saves === 0 && interest.views === 0 ? "display:none" : ""}">
           <span>🔥</span> <strong>${interest.saves}</strong> ${L.peopleSavedShort} &middot; ${interest.views} ${L.viewsShort}
         </div>
         <div class="refcode">${b.year ? b.year + " · " : ""}${b.color[state.lang]}</div>
@@ -793,7 +785,7 @@
           <div class="ask">${euro(bike.price)} <small>${L.asking}</small>${qty > 1 && bike.unitPrice ? `<span style="display:block;font-size:0.5em;font-weight:400;color:var(--muted);margin-top:2px">${euro(bike.unitPrice)} ${L.each}</span>` : ""}</div>
           ${pairHtml}
           ${qty > 1 ? `<div style="font-size:12px;color:var(--brass);background:rgba(215,168,92,0.1);padding:8px 12px;border-radius:10px;margin-bottom:10px;border:1px solid rgba(215,168,92,0.25)">💡 ${L.singleBikeNote}</div>` : ""}
-          <div class="social-urgency-box">
+          ${interest.saves > 0 || interest.views > 0 ? `<div class="social-urgency-box">
             <div class="urgency-header">
               <span class="urgency-flame">🔥</span>
               <span class="urgency-title">${L.highInterestTitle}</span>
@@ -804,7 +796,7 @@
             <div class="urgency-callout">
               ⚡ ${L.testRideLimitNotice}
             </div>
-          </div>
+          </div>` : ""}
           <p class="lead-s" style="margin:8px 0 0">${highest ? `${L.highest}: ${euro(highest)} · ${bike.bidCount} ${L.bids}` : L.noBids} · ${L.minBid} ${euro(minNext)}</p>
           <p class="lead-s">${L.bidLead}</p>
           <form class="bid-form" id="bid-form">
