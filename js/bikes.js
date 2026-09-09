@@ -727,5 +727,57 @@ window.BIKES = [
       "studio" : "real/studio/vl-2414.jpg",
       "minBid" : 320,
       "currentBid" : 0
+   },
+   {
+      "ref" : "VL-2415",
+      "brand" : "Tern",
+      "model" : "Link P7i",
+      "year" : null,
+      "price" : 599,
+      "unitPrice" : null,
+      "qty" : 1,
+      "minBid" : 500,
+      "currentBid" : 0,
+      "bidCount" : 0,
+      "condition" : "like-new",
+      "gears" : 7,
+      "wheel" : 20,
+      "weightKg" : 14.4,
+      "folded" : "N-Fold ~10 sec",
+      "brakes" : "v-brake",
+      "tires" : "standaard",
+      "bar" : "flat",
+      "electric" : false,
+      "status" : "available",
+      "featured" : true,
+      "color" : {
+         "nl" : "Zwart",
+         "en" : "Black"
+      },
+      "included" : [
+         "spatborden",
+         "bagagedrager",
+         "verlichting",
+         "standaard",
+         "opbergtas"
+      ],
+      "defects" : {
+         "nl" : "Zo goed als nieuw, minimale gebruikssporen. Bekijk alle foto’s.",
+         "en" : "Like-new, minimal signs of use. Check all photos."
+      },
+      "notes" : {
+         "nl" : "Tern Link P7i: Premium opklapfiets in zeer goede staat met 7 Shimano Nexus naafversnellingen (onderhoudsarm, geen rommelige derailleur). Uitgerust met naafdynamo met koplamp en Trolley Rack met transportwieltjes en geïntegreerde opberghoes/tas (rolt soepel mee). Oorspronkelijke nieuwwaarde ca. €1.300. Vraagprijs €599. Ophalen in Delft.",
+         "en" : "Tern Link P7i: Premium folding bike in like-new condition with 7-speed Shimano Nexus internal gear hub (low maintenance, no exposed derailleur). Equipped with hub dynamo headlight and Trolley Rack with luggage wheels and integrated carry cover bag (rolls smoothly like a trolley). Original retail price ~€1,300. Asking price €599. Pickup in Delft."
+      },
+      "photos" : [
+         "real/p7i/01.jpg",
+         "real/p7i/02.jpg",
+         "real/p7i/03.jpg",
+         "real/p7i/04.jpg",
+         "real/p7i/05.jpg"
+      ],
+      "studio" : "real/studio/vl-2415.jpg",
+      "mpId" : "m2440861563",
+      "mpUrl" : "https://www.marktplaats.nl/v/fietsen-en-brommers/fietsen-vouwfietsen/m2440861563-tern-link-p7i-vouwfiets-met-7-naafversnellingen-zgan"
    }
 ];
