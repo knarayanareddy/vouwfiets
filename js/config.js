@@ -11,6 +11,8 @@ window.VOUW = {
   marktplaatsProfile: "https://www.marktplaats.nl/v/fietsen-en-brommers/fietsen-vouwfietsen/m2437999320-2x-tern-link-aluminium-vouwfietsen-met-7-versnellingen",
   pickupHours: { nl: "Op afspraak, 7 dagen", en: "By appointment, 7 days" },
   payment: { nl: "Tikkie of contant bij afhalen", en: "Tikkie or cash at pickup" },
+  /* Contact Email for direct buyer inquiries */
+  email: "kirannreddyaero@gmail.com",
   /* Set true after you replace demo bikes with your real stock */
   demoInventory: false,
   /* Live Bid Synchronization (Serverless / Cloud)

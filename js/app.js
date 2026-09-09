@@ -115,6 +115,18 @@
     return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
   }
 
+  function emailLink(bike, extra = "") {
+    const to = window.VOUW.email || "";
+    const subject = state.lang === "nl"
+      ? `Interesse in ${bike.brand} ${bike.model} (${bike.ref})`
+      : `Inquiry: ${bike.brand} ${bike.model} (${bike.ref})`;
+    const pairNote = (bike.qty || 1) > 1 ? (state.lang === "nl" ? " (2 stuks)" : " (pair)") : "";
+    const body = state.lang === "nl"
+      ? `Hallo,\n\nIk heb interesse in de ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods.\nVraagprijs: ${euro(bike.price)}.\n${extra ? extra + "\n\n" : "\n"}Ik wil graag een afspraak maken voor bezichtiging / proefrit in Delft.\n\nMet vriendelijke groet,`
+      : `Hello,\n\nI am interested in the ${bike.brand} ${bike.model} (${bike.ref}${pairNote}) via Vouwloods.\nAsking price: ${euro(bike.price)}.\n${extra ? extra + "\n\n" : "\n"}I would like to arrange a viewing / test ride in Delft.\n\nBest regards,`;
+    return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
   function mpText(bike) {
     return state.lang === "nl"
       ? `Hallo, ik reageer op Vouwloods ref ${bike.ref} — ${bike.brand} ${bike.model} (${bike.year}). Ik wil hem graag bekijken in Delft.`
@@ -504,13 +516,14 @@
           <h3 style="margin:16px 0 8px">${L.contactTitle}</h3>
           <div class="contact-row">
             <a class="btn btn-wa" target="_blank" rel="noopener" href="${waLink(bike)}">${L.waBtn}</a>
+            <a class="btn btn-ghost" href="${emailLink(bike)}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>${L.emailBtn}</a>
             <a class="btn btn-ghost" target="_blank" rel="noopener" href="${mpHref}">${L.mpBtn}</a>
             <button class="btn btn-ghost" id="copy-msg">${L.copyMsg}</button>
             <button class="btn btn-ghost" id="copy-listing">${L.copyListing}</button>
             <button class="btn btn-ghost" id="share">${L.share}</button>
           </div>
           <p class="lead-s" style="margin-top:14px"><strong>${L.pickup}:</strong> ${window.VOUW.city}, ${window.VOUW.region} · ${window.VOUW.pickupHours[state.lang]}<br>
-          <strong>${L.pay}:</strong> ${window.VOUW.payment[state.lang]}</p>
+          <strong>${L.pay}:</strong> ${window.VOUW.payment[state.lang]}${window.VOUW.email ? `<br><strong>${L.email}:</strong> <a href="${emailLink(bike)}" style="color:var(--signal);text-decoration:underline">${window.VOUW.email}</a>` : ""}</p>
         </aside>
       </div>`;
 
